@@ -1,0 +1,47 @@
+{
+  "name": "soundcloud-app",
+  "productName": "SoundCloudX",
+  "version": "1.5.0",
+  "description": "SoundCloudX - SoundCloud desktop app for Windows",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "latest",
+    "electron-builder": "latest"
+  },
+  "build": {
+    "appId": "com.local.soundcloudapp",
+    "productName": "SoundCloudX",
+    "files": [
+      "main.js",
+      "preload.js",
+      "discord-rpc.js",
+      "mini-preload.js",
+      "mini.html",
+      "splash.html",
+      "bar.css",
+      "icon.ico",
+      "icon.png",
+      "icon-512.png"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "SoundCloudX"
+    },
+    "portable": {
+      "artifactName": "SoundCloudX-portable.exe"
+    }
+  }
+}
