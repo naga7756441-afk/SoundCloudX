@@ -140,10 +140,7 @@ or double-click **build.bat**. The `.exe` files appear in `dist/`.
 
 ## 🗄️ Own server (optional)
 
-SCX Online runs on [Supabase](https://supabase.com) (free plan is enough).
-Run these once in **Supabase → SQL Editor**, in this order:
-
-`supabase-v1.7.sql` → `supabase-v1.8.sql` → `supabase-v1.9.sql` → `supabase-v2.0.sql`
+SCX Online runs on [Supabase](https://supabase.com) .
 
 ---
 
@@ -153,4 +150,4 @@ Run these once in **Supabase → SQL Editor**, in this order:
 - Only your nick, picture, what you play, coins and stats are shared in SCX Online — no e-mail, no password.
 - Not affiliated with SoundCloud. SoundCloud is a trademark of SoundCloud Global Limited.
 
-<p align="center"><sub>Made with 🧡 by W1CKIX</sub></p>
+<p align="center"><sub>Made by W1CKIX</sub></p>
