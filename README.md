@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icon-512.png" width="120" alt="SoundCloudX">
+  <img src="icon-512.png" width="120" alt="SoundCloudX 1.5">
 </p>
 
 <h1 align="center">SoundCloud<span>X</span></h1>
