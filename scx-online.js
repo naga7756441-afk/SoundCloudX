@@ -288,8 +288,23 @@ class ScxOnline {
       case 'pinGift':
         await this.rest('POST', 'rpc/scx_pin_gift', { gift: Number(req.gift), slot: req.slot == null ? null : Number(req.slot) });
         return true;
+      case 'openPack':
+        return this.rest('POST', 'rpc/scx_open_pack', { gift: Number(req.gift) });
+      case 'transferGift':
+        if (!id) throw new Error('Pick who gets it');
+        await this.rest('POST', 'rpc/scx_transfer_gift', { gift: Number(req.gift), target: id, note: clip(req.note, 200) });
+        return true;
+      case 'recoveryCode':
+        return this.rest('POST', 'rpc/scx_make_recovery_code', {});
+      case 'recover': {
+        const code = String(req.code || '').trim().toUpperCase().replace(/\s+/g, '');
+        if (!/^SCX(-[0-9A-Z]{5}){4}$/.test(code)) throw new Error('A code looks like SCX-XXXXX-XXXXX-XXXXX-XXXXX');
+        await this.rest('POST', 'rpc/scx_recover', { code });
+        const rows = await this.rest('GET', `profiles?id=eq.${me}&select=*`);
+        return (rows && rows[0]) || null;
+      }
       case 'myGifts':
-        return this.rest('GET', `gifts?to_user=eq.${me}&select=id,kind,name,data,num,amount,note,pinned,created_at,from:profiles!gifts_from_user_fkey(id,nick)&order=created_at.desc&limit=100`);
+        return this.rest('GET', `gifts?to_user=eq.${me}&select=id,item_id,kind,name,data,num,amount,note,pinned,created_at,from:profiles!gifts_from_user_fkey(id,nick)&order=created_at.desc&limit=100`);
       case 'equipBg':
         await this.rest('POST', 'rpc/scx_equip_profile_bg', { item: req.item == null ? null : Number(req.item) });
         return true;
@@ -304,7 +319,7 @@ class ScxOnline {
       case 'adminItems':
         return this.rest('GET', 'shop_items?select=*&order=created_at.desc');
       case 'adminAdd': {
-        const kind = ['tag', 'image', 'gif', 'theme', 'frame', 'gift'].includes(req.kind) ? req.kind : null;
+        const kind = ['tag', 'image', 'gif', 'theme', 'frame', 'gift', 'pack'].includes(req.kind) ? req.kind : null;
         if (!kind) throw new Error('Pick a type');
         const name = String(req.name || '').trim().slice(0, 40);
         if (!name) throw new Error('Give it a name');

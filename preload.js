@@ -4080,6 +4080,93 @@ function giftEl(d, size) {
   }
   return g;
 }
+function packEl(d, size) {
+  d = d || {};
+  const g = el('div', 'cc-gift cc-pack');
+  g.style.width = g.style.height = size + 'px';
+  if (safeImg(d.url)) { const i = el('img'); i.src = d.url; i.alt = ''; g.append(i); }
+  else { const e = el('span', null, String(d.emoji || '🎁').slice(0, 8)); e.style.fontSize = Math.round(size * 0.6) + 'px'; g.append(e); }
+  return g;
+}
+// what is inside a pack + the chance of each (from the shop list)
+function packOdds(d) {
+  const pool = Array.isArray(d && d.pool) ? d.pool : [];
+  const rows = pool.map((p) => ({ it: SHOP.items.find((x) => x.id === Number(p.item) && x.kind === 'gift'), w: Math.max(0, Number(p.weight) || 0) }))
+    .filter((r) => r.it && r.w > 0 && !(r.it.supply && (r.it.sold || 0) >= r.it.supply));
+  const tot = rows.reduce((a, r) => a + r.w, 0) || 1;
+  return rows.map((r) => ({ it: r.it, pct: (r.w / tot) * 100 }))
+    .sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.it.data)) - RARITY_ORDER.indexOf(rarityOf(b.it.data)));
+}
+const fmtPct = (x) => (x >= 10 ? Math.round(x) : x >= 1 ? x.toFixed(1) : x.toFixed(2)).toString().replace(/\.0+$/, '') + '%';
+function oddsEl(d) {
+  const w = el('div', 'cc-odds');
+  packOdds(d).forEach((o) => {
+    const c = el('span', 'cc-odd');
+    c.style.setProperty('--rc', RARITY[rarityOf(o.it.data)][1]);
+    c.title = o.it.name + ' · ' + RARITY[rarityOf(o.it.data)][0];
+    c.append(el('i', null, String((o.it.data && o.it.data.emoji) || '🎁').slice(0, 8)), el('b', null, fmtPct(o.pct)));
+    w.append(c);
+  });
+  return w;
+}
+
+// open a pack: 🎁 shakes → flash → the gift pops out (≤ 2 s)
+async function openPack(gift) {
+  const wrap = el('div', 'cc-popen');
+  const stage = el('div', 'cc-pstage');
+  const box = packEl(gift.data, 110);
+  box.classList.add('cc-pshake');
+  stage.append(box);
+  const out = el('div', 'cc-pout');
+  wrap.append(stage, out);
+  togglePanel(true);
+  panel.append(wrap);
+  const t0 = performance.now();
+  let res;
+  try { res = await onlineCall('openPack', { gift: gift.id }); } catch (e) { wrap.remove(); toast(e.message); return null; }
+  await sleep(Math.max(0, 850 - (performance.now() - t0)));
+  const r = rarityOf(res.data);
+  wrap.style.setProperty('--rc', RARITY[r][1]);
+  wrap.classList.add('cc-pflash', 'cc-r-' + r);
+  box.remove();
+  const g = giftEl(res.data, 120);
+  g.classList.add('cc-ppop');
+  stage.append(el('i', 'cc-prays'), g);
+  out.append(el('b', null, res.name), rarityChip(res.data), el('small', null, res.num ? '#' + res.num : ''));
+  setTimeout(() => {
+    out.classList.add('cc-show');
+    const close = () => { wrap.classList.add('cc-pgone'); setTimeout(() => wrap.remove(), 200); };
+    wrap.addEventListener('click', close);
+    out.append(el('em', null, 'click to close'));
+    setTimeout(close, 6000);
+  }, 650);
+  MYG.list = null;
+  badgeCache.clear();
+  if (ON.view && ON.view.isMe) setTimeout(() => openProfile(ON.uid), 300);
+  return res;
+}
+// buy a pack for yourself and open it right away
+async function buyAndOpen(it, btn) {
+  if (coinBalance() < it.price) return toast('Not enough coins yet');
+  if (SHOP.armedId !== it.id || Date.now() - SHOP.armed > 4000) {
+    SHOP.armedId = it.id; SHOP.armed = Date.now();
+    btn.textContent = 'Open for 🪙 ' + it.price.toLocaleString('en-US') + '?';
+    btn.classList.add('cc-armed');
+    return;
+  }
+  SHOP.armedId = null;
+  btn.textContent = '…';
+  await onlineSync();
+  try {
+    await onlineCall('gift', { id: ON.uid, item: it.id });
+    await refreshMe();
+    const mine = (await onlineCall('myGifts')) || [];
+    const pk = mine.find((g) => g.kind === 'pack' && g.item_id === it.id);
+    renderShop();
+    if (pk) await openPack(pk);
+  } catch (e) { toast(e.message); renderShop(); }
+}
+
 function rarityChip(d) {
   const r = rarityOf(d);
   const c = el('span', 'cc-rchip cc-r-' + r, RARITY[r][0]);
@@ -4270,7 +4357,59 @@ function joinForm(box, editing) {
   if (!editing) box.append(note('See who listens with SCX right now, follow people and compete for coins and SCX Beat scores.'));
   box.append(nick, el('div', 'cc-gap'), link, avRow, msg, save);
   if (editing) box.append(wideBtn('Cancel', () => { ON.editing = false; renderOnline(); }, 'cc-ghost'));
-  else box.append(note('Only your nick, picture, what you play, coins and stats are shared. No e-mail, no password.'));
+  else box.append(note('Only your nick, picture, what you play, coins and stats are shared. No e-mail, no password.'),
+    wideBtn('🔑 I have a recovery code', () => { ON.restoring = true; renderOnline(); }, 'cc-ghost'));
+}
+
+// ---- recovery code: get the same profile back on another PC
+const REC_CODE = { code: '', armed: 0 };
+function recoveryBox() {
+  const w = el('div', 'cc-recov');
+  if (REC_CODE.code) {
+    w.classList.add('cc-recov-open');
+    const c = el('code', null, REC_CODE.code);
+    const cp = el('button', 'cc-sbtn', 'Copy');
+    cp.addEventListener('click', () => { try { navigator.clipboard.writeText(REC_CODE.code); cp.textContent = 'Copied ✓'; } catch { toast('Select the code and press Ctrl+C'); } });
+    const row = el('div', 'cc-recrow');
+    row.append(c, cp);
+    const hide = el('button', 'cc-sbtn cc-ghostbtn', 'Hide');
+    hide.addEventListener('click', () => { REC_CODE.code = ''; renderOnline(); });
+    w.append(el('b', null, '🔑 Your recovery code'), row,
+      note('Save it somewhere safe (notes, photo). On a new PC: Online → "I have a recovery code". Anyone with this code can take your profile — don\'t share it.'), hide);
+    return w;
+  }
+  const b = el('button', 'cc-sbtn cc-ghostbtn', '🔑 Recovery code');
+  b.title = 'A code to get this profile back on another PC';
+  b.addEventListener('click', async () => {
+    if (Date.now() - REC_CODE.armed > 4000) { REC_CODE.armed = Date.now(); b.textContent = 'Make a new code? (old one stops working)'; b.classList.add('cc-armed'); return; }
+    b.textContent = '…';
+    try { REC_CODE.code = await onlineCall('recoveryCode'); } catch (e) { toast(e.message); }
+    renderOnline();
+  });
+  w.append(b);
+  return w;
+}
+function restoreForm(box) {
+  const code = el('input', 'cc-text');
+  code.placeholder = 'SCX-XXXXX-XXXXX-XXXXX-XXXXX';
+  code.maxLength = 40;
+  const msg = el('div', 'cc-status');
+  const go = wideBtn('Restore my profile', async () => {
+    msg.textContent = '';
+    go.textContent = '…';
+    try {
+      const p = await onlineCall('recover', { code: code.value });
+      if (!p) throw new Error('Wrong recovery code');
+      ON.me = p;
+      ON.restoring = false;
+      COINS.ping();
+      onlineSync(); onlineHeartbeat(); loadCounts(); refreshLists();
+      toast('Welcome back, ' + p.nick + ' 👋');
+      renderOnline();
+    } catch (e) { msg.textContent = e.message; go.textContent = 'Restore my profile'; }
+  });
+  box.append(sectionTitle('🔑 Restore profile'), note('Paste the recovery code from your old PC. Your coins, gifts, followers — everything comes back.'),
+    code, msg, go, wideBtn('Cancel', () => { ON.restoring = false; renderOnline(); }, 'cc-ghost'));
 }
 
 function renderProfileView(box) {
@@ -4371,6 +4510,25 @@ async function renderMyGifts(box, force) {
   box.textContent = '';
   const list = MYG.list;
   if (!list.length) { box.append(note('No gifts yet. Friends can send you gifts from your profile or the Shop.')); return; }
+  const packs = list.filter((g) => g.kind === 'pack');
+  if (packs.length) {
+    const grid = el('div', 'cc-giftgrid');
+    for (const g of packs) {
+      const c = el('div', 'cc-giftcell cc-packcell');
+      c.append(packEl(g.data, 46), el('b', null, g.name), el('small', null, g.from && g.from.nick ? 'from ' + g.from.nick : 'bought'));
+      if (g.note) c.title = '"' + g.note + '"';
+      const btns = el('div', 'cc-cellbtns');
+      const op = el('button', 'cc-sbtn', 'Open');
+      op.addEventListener('click', () => openPack(g));
+      const pass = el('button', 'cc-sbtn cc-ghostbtn', '🎁');
+      pass.title = 'Give it to someone';
+      pass.addEventListener('click', () => giftDialog({ transfer: g }));
+      btns.append(op, pass);
+      c.append(btns);
+      grid.append(c);
+    }
+    box.append(grid);
+  }
   const gifts = list.filter((g) => g.kind === 'gift');
   if (gifts.length) {
     const grid = el('div', 'cc-giftgrid');
@@ -4392,12 +4550,17 @@ async function renderMyGifts(box, force) {
         if (ON.view && ON.view.isMe) ON.view.gifts = gifts.filter((x) => x.pinned).sort((a, b) => a.pinned - b.pinned);
         renderOnline();
       });
-      c.append(pin);
+      const pass = el('button', 'cc-sbtn cc-ghostbtn', '🎁');
+      pass.title = 'Give it to someone (it keeps its number)';
+      pass.addEventListener('click', () => giftDialog({ transfer: g }));
+      const btns = el('div', 'cc-cellbtns');
+      btns.append(pin, pass);
+      c.append(btns);
       grid.append(c);
     }
     box.append(grid);
   }
-  const other = list.filter((g) => g.kind !== 'gift');
+  const other = list.filter((g) => g.kind !== 'gift' && g.kind !== 'pack');
   for (const g of other.slice(0, 20)) {
     const r = el('div', 'cc-giftline');
     r.append(el('span', null, (g.kind === 'coins' ? '🪙 ' + Number(g.amount || 0).toLocaleString('en-US') + ' coins' : (g.kind === 'tag' ? '🏷️ ' : '⭕ ') + g.name)),
@@ -4410,6 +4573,7 @@ async function renderMyGifts(box, force) {
 const GD = { el: null };
 function giftDialog(opts) {
   if (!ON.me) return toast('Join SCX Online first (Online tab)');
+  const tr = opts.transfer || null;
   const st = { to: opts.to || null, item: opts.item || null, coins: opts.coins || 0, tab: opts.item ? opts.item.kind : 'gift', q: '', res: [], note: '' };
   if (GD.el) GD.el.remove();
   const wrap = el('div', 'cc-gdlg');
@@ -4420,6 +4584,7 @@ function giftDialog(opts) {
   panel.append(wrap); // inside the menu, so it uses the menu's look
   GD.el = wrap;
   function close() { wrap.remove(); if (GD.el === wrap) GD.el = null; }
+  if (!ON.following.length) onlineCall('following').then((r) => { if (Array.isArray(r) && r.length) { ON.following = r; if (!st.to && !st.q) paint(); } }).catch(() => {});
   if (!SHOP.items.length) onlineCall('shop').then((r) => { SHOP.items = r.items || []; SHOP.owned = new Set(r.owned || []); paint(); }).catch(() => {});
 
   function paint() {
@@ -4427,7 +4592,7 @@ function giftDialog(opts) {
     const head = el('div', 'cc-ghead');
     const x = el('button', 'cc-gx', '✕');
     x.addEventListener('click', close);
-    head.append(el('b', null, '🎁 Send a gift'), x);
+    head.append(el('b', null, tr ? '🎁 Give away' : '🎁 Send a gift'), x);
     card.append(head);
     // 1) who
     if (!st.to) {
@@ -4466,7 +4631,16 @@ function giftDialog(opts) {
     card.append(who);
     // 2) what
     const self = st.to.id === ON.uid;
-    if (!opts.item) {
+    if (tr) {
+      const sel = el('div', 'cc-gsel');
+      sel.append(tr.kind === 'pack' ? packEl(tr.data, 64) : giftEl(tr.data, 64));
+      const tx = el('div');
+      tx.append(el('b', null, tr.name + (tr.num ? ' #' + tr.num : '')));
+      if (tr.kind === 'gift') tx.append(rarityChip(tr.data));
+      tx.append(el('small', null, 'Free — it leaves your gifts and goes to ' + (st.to.nick || '?')));
+      sel.append(tx);
+      card.append(sel);
+    } else if (!opts.item) {
       const tabs = self ? [['gift', '🎁 Gifts']] : [['coins', '🪙 Coins'], ['gift', '🎁 Gifts'], ['tag', '🏷️ Tags'], ['frame', '⭕ Frames']];
       if (!tabs.some((t2) => t2[0] === st.tab)) st.tab = 'gift';
       const seg = el('div', 'cc-gtabs');
@@ -4483,13 +4657,14 @@ function giftDialog(opts) {
         card.append(amt, quick, el('small', 'cc-gstep', 'You have 🪙 ' + coinBalance().toLocaleString('en-US')));
       } else {
         const grid = el('div', 'cc-gitems');
-        const items = SHOP.items.filter((it) => it.kind === st.tab && it.active !== false);
-        if (st.tab === 'gift') items.sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.data)) - RARITY_ORDER.indexOf(rarityOf(b.data)) || a.price - b.price);
+        const items = SHOP.items.filter((it) => (it.kind === st.tab || (st.tab === 'gift' && it.kind === 'pack')) && it.active !== false);
+        if (st.tab === 'gift') items.sort((a, b) => (a.kind === 'pack' ? -1 : 0) - (b.kind === 'pack' ? -1 : 0) || RARITY_ORDER.indexOf(rarityOf(a.data)) - RARITY_ORDER.indexOf(rarityOf(b.data)) || a.price - b.price);
         if (!items.length) grid.append(note(SHOP.items.length ? 'Nothing here yet' : 'Loading…'));
         items.forEach((it) => {
           const b = el('button', 'cc-gitem' + (st.item && st.item.id === it.id ? ' cc-on' : ''));
           const d = it.data || {};
-          if (it.kind === 'gift') { b.append(giftEl(d, 40)); b.style.setProperty('--rc', RARITY[rarityOf(d)][1]); }
+          if (it.kind === 'pack') b.append(packEl(d, 40));
+          else if (it.kind === 'gift') { b.append(giftEl(d, 40)); b.style.setProperty('--rc', RARITY[rarityOf(d)][1]); }
           else if (it.kind === 'tag') b.append(tagEl({ tag_text: d.text || it.name, tag_color: d.color }));
           else b.append(avatarEl({ nick: st.to.nick, avatar: st.to.avatar, frame: d }, 32));
           b.append(el('small', null, '🪙 ' + it.price.toLocaleString('en-US')));
@@ -4503,13 +4678,15 @@ function giftDialog(opts) {
     if (st.item) {
       const sel = el('div', 'cc-gsel');
       const d = st.item.data || {};
-      if (st.item.kind === 'gift') sel.append(giftEl(d, 64));
+      if (st.item.kind === 'pack') sel.append(packEl(d, 64));
+      else if (st.item.kind === 'gift') sel.append(giftEl(d, 64));
       else if (st.item.kind === 'tag') sel.append(tagEl({ tag_text: d.text || st.item.name, tag_color: d.color }));
       else sel.append(avatarEl({ nick: st.to.nick, avatar: st.to.avatar, frame: d }, 56));
       const tx = el('div');
       tx.append(el('b', null, st.item.name));
       if (st.item.kind === 'gift') tx.append(rarityChip(d));
       if (st.item.supply) tx.append(el('small', null, Math.max(0, st.item.supply - (st.item.sold || 0)) + ' / ' + st.item.supply + ' left'));
+      if (st.item.kind === 'pack') tx.append(oddsEl(d));
       sel.append(tx);
       card.append(sel);
     }
@@ -4520,25 +4697,26 @@ function giftDialog(opts) {
     msg.value = st.note;
     msg.addEventListener('input', () => { st.note = msg.value; });
     const status = el('div', 'cc-status');
-    const price = () => (st.tab === 'coins' && !opts.item ? st.coins : st.item ? st.item.price : 0);
-    const sendLabel = () => (st.tab === 'coins' && !opts.item ? (st.coins ? 'Send 🪙 ' + st.coins.toLocaleString('en-US') : 'Send coins')
+    const price = () => (tr ? 0 : st.tab === 'coins' && !opts.item ? st.coins : st.item ? st.item.price : 0);
+    const sendLabel = () => (tr ? 'Give to ' + (st.to.nick || '?') : st.tab === 'coins' && !opts.item ? (st.coins ? 'Send 🪙 ' + st.coins.toLocaleString('en-US') : 'Send coins')
       : st.item ? (self ? 'Buy' : 'Send') + ' for 🪙 ' + st.item.price.toLocaleString('en-US') : 'Pick something');
     let armed = 0;
     const sendB = wideBtn(sendLabel(), async () => {
-      const coinsMode = st.tab === 'coins' && !opts.item;
-      if (coinsMode ? !st.coins : !st.item) return;
+      const coinsMode = st.tab === 'coins' && !opts.item && !tr;
+      if (!tr && (coinsMode ? !st.coins : !st.item)) return;
       if (coinBalance() < price()) { status.textContent = 'Not enough coins'; return; }
       if (Date.now() - armed > 4000) { armed = Date.now(); sendB.textContent = 'Sure? ' + sendLabel(); sendB.classList.add('cc-armed'); return; }
       sendB.textContent = '…';
       await onlineSync();
       try {
-        if (coinsMode) await onlineCall('sendCoins', { id: st.to.id, amount: st.coins, note: st.note });
+        if (tr) await onlineCall('transferGift', { id: st.to.id, gift: tr.id, note: st.note });
+        else if (coinsMode) await onlineCall('sendCoins', { id: st.to.id, amount: st.coins, note: st.note });
         else await onlineCall('gift', { id: st.to.id, item: st.item.id, note: st.note });
         await refreshMe();
         MYG.list = null;
         badgeCache.clear();
         if (st.item) { st.item.sold = (st.item.sold || 0) + 1; }
-        toast(self ? '🎁 ' + st.item.name + ' is yours — pin it in My gifts' : '🎁 Sent to ' + st.to.nick + '!');
+        toast(self ? '🎁 ' + st.item.name + ' is yours — ' + (st.item.kind === 'pack' ? 'open it' : 'pin it') + ' in My gifts' : '🎁 Sent to ' + st.to.nick + '!');
         close();
         renderShop();
         if (ON.view) openProfile(ON.view.id);
@@ -4567,6 +4745,7 @@ function renderOnlineInto(box) {
     return;
   }
   if (ON.view) return renderProfileView(box);
+  if (!ON.me && ON.restoring) return restoreForm(box);
   if (!ON.me || ON.editing) return joinForm(box, !!ON.me);
 
   // me
@@ -4583,7 +4762,7 @@ function renderOnlineInto(box) {
   box.append(me);
   const row = el('div', 'cc-btnrow');
   row.append(wideBtn('My profile', () => openProfile(ON.uid), 'cc-ghost'), wideBtn('Edit', () => { ON.editing = true; renderOnline(); }, 'cc-ghost'));
-  box.append(row, toggleRow('Show me online', () => S.online.show, (v) => { S.online.show = v; saveAll(); onlineHeartbeat(); renderOnline(); }));
+  box.append(row, recoveryBox(), toggleRow('Show me online', () => S.online.show, (v) => { S.online.show = v; saveAll(); onlineHeartbeat(); renderOnline(); }));
   if (ON.err) box.append(el('div', 'cc-status', ON.err));
 
   // online now
@@ -4728,7 +4907,9 @@ function shopCard(it) {
   const owned = SHOP.owned.has(it.id);
   const card = el('div', 'cc-shopcard cc-shop-' + it.kind);
   const pic = el('div', 'cc-shoppic');
-  if (it.kind === 'gift') {
+  if (it.kind === 'pack') {
+    pic.append(packEl(d, 54));
+  } else if (it.kind === 'gift') {
     pic.append(giftEl(d, 52));
     card.classList.add('cc-r-' + rarityOf(d));
     card.style.setProperty('--rc', RARITY[rarityOf(d)][1]);
@@ -4746,7 +4927,9 @@ function shopCard(it) {
   }
   const info = el('div', 'cc-shopinfo');
   info.append(el('b', null, it.name));
-  if (it.kind === 'gift') {
+  if (it.kind === 'pack') {
+    info.append(el('span', null, '🪙 ' + it.price.toLocaleString('en-US')), oddsEl(d));
+  } else if (it.kind === 'gift') {
     const left = it.supply ? Math.max(0, it.supply - (it.sold || 0)) : null;
     const sub = el('span', null, '🪙 ' + it.price.toLocaleString('en-US'));
     info.append(rarityChip(d), sub);
@@ -4754,6 +4937,16 @@ function shopCard(it) {
   } else info.append(el('span', null, owned ? 'Owned' : '🪙 ' + it.price.toLocaleString('en-US')));
   card.append(pic, info);
   const row = el('div', 'cc-shopbtns');
+  if (it.kind === 'pack') {
+    const send = el('button', 'cc-sbtn cc-ghostbtn', '🎁 Send');
+    send.addEventListener('click', () => giftDialog({ item: it }));
+    const open = el('button', 'cc-sbtn', 'Open');
+    open.title = 'Buy it and open it now';
+    open.addEventListener('click', () => buyAndOpen(it, open));
+    row.append(open, send);
+    card.append(row);
+    return card;
+  }
   if (it.kind === 'gift') {
     const soldOut = it.supply && (it.sold || 0) >= it.supply;
     const send = el('button', 'cc-sbtn' + (soldOut ? ' cc-dim' : ''), '🎁 Send');
@@ -4829,7 +5022,7 @@ function renderShop() {
   if (SHOP.err) box.append(el('div', 'cc-status', SHOP.err));
   if (SHOP.loading && !SHOP.items.length) box.append(note('Loading the shop…'));
   box.append(wideBtn('🎁  Send a gift / coins to someone', () => giftDialog({}), 'cc-ghost'));
-  for (const [kind, title] of [['gift', '🎁 Gifts'], ['tag', '🏷️ Tags'], ['frame', '⭕ Frames'], ['theme', '🎨 Themes'], ['gif', '🎞️ GIFs'], ['image', '🖼️ Pictures']]) {
+  for (const [kind, title] of [['pack', '🎁 Gift packs'], ['gift', '✨ Gifts'], ['tag', '🏷️ Tags'], ['frame', '⭕ Frames'], ['theme', '🎨 Themes'], ['gif', '🎞️ GIFs'], ['image', '🖼️ Pictures']]) {
     const list = SHOP.items.filter((x) => x.kind === kind && x.active !== false);
     if (kind === 'gift') list.sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.data)) - RARITY_ORDER.indexOf(rarityOf(b.data)) || a.price - b.price);
     if (!list.length) continue;
@@ -4839,6 +5032,7 @@ function renderShop() {
     box.append(grid);
   }
   if (!SHOP.loading && !SHOP.items.length && !SHOP.err) box.append(note('The shop is empty for now.'));
+  if (SHOP.items.some((x) => x.kind === 'pack')) box.append(note('Packs: you get one of the gifts shown on the pack — the % is the chance.'));
   box.append(note('Tags, frames and profile pictures / GIFs show on your SCX profile and on your SoundCloud page (for everyone who uses SCX).'));
   refreshers.splice(mark).forEach((f) => f());
 }
@@ -4898,7 +5092,7 @@ function renderAdmin() {
 
   // ---- add to shop
   box.append(sectionTitle('🛒 Add to the shop'));
-  box.append(segmented([['gift', 'Gift'], ['tag', 'Tag'], ['frame', 'Frame'], ['image', 'Picture'], ['gif', 'GIF'], ['theme', 'Theme']], () => ADM.kind, (v) => { ADM.kind = v; renderAdmin(); }));
+  box.append(segmented([['pack', 'Pack'], ['gift', 'Gift'], ['tag', 'Tag'], ['frame', 'Frame'], ['image', 'Picture'], ['gif', 'GIF'], ['theme', 'Theme']], () => ADM.kind, (v) => { ADM.kind = v; renderAdmin(); }));
   const name = textInput('Name in the shop');
   const price = textInput('Price in coins');
   price.inputMode = 'numeric';
@@ -4930,7 +5124,51 @@ function renderAdmin() {
     });
     return file;
   };
-  if (ADM.kind === 'gift') {
+  if (ADM.kind === 'pack') {
+    const emo = textInput('Emoji (default 🎁)');
+    emo.maxLength = 8;
+    const url = textInput('or a picture: https://… (or upload)');
+    const file = uploader('image/png,image/gif,image/webp', (u) => { url.value = u; paint(); });
+    const prev = el('div', 'cc-shoppic cc-admprev');
+    const gifts = ADM.items.filter((x) => x.kind === 'gift');
+    const pool = new Map();
+    const list = el('div', 'cc-poolist');
+    const sumEl = el('small', 'cc-gstep');
+    const paint = () => {
+      prev.textContent = '';
+      prev.append(packEl(getData(), 54));
+      const tot = [...pool.values()].reduce((a, b) => a + b, 0);
+      list.querySelectorAll('[data-id]').forEach((r) => {
+        const w = pool.get(Number(r.dataset.id)) || 0;
+        r.querySelector('.cc-pct').textContent = w && tot ? fmtPct((w / tot) * 100) : '—';
+      });
+      sumEl.textContent = pool.size ? pool.size + ' gifts in the pack' : 'Tick the gifts that can drop + their weight (bigger = more often)';
+    };
+    if (!gifts.length) list.append(note('Add some gifts first (Gift tab).'));
+    gifts.sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.data)) - RARITY_ORDER.indexOf(rarityOf(b.data)) || a.price - b.price).forEach((g) => {
+      const r = el('div', 'cc-poolrow');
+      r.dataset.id = g.id;
+      const cb = el('input');
+      cb.type = 'checkbox';
+      const w = el('input', 'cc-text cc-wt');
+      w.inputMode = 'numeric';
+      w.value = '10';
+      w.title = 'Weight';
+      const upd = () => { if (cb.checked) pool.set(g.id, Math.max(0, Number(w.value) || 0)); else pool.delete(g.id); paint(); };
+      cb.addEventListener('change', upd);
+      w.addEventListener('input', upd);
+      r.append(cb, giftEl(g.data, 26), el('span', null, g.name), w, el('b', 'cc-pct', '—'));
+      list.append(r);
+    });
+    [emo, url].forEach((i) => i.addEventListener('input', paint));
+    box.append(field('Look', emo), field('Picture (optional)', url), wideBtn('Upload picture / GIF…', () => file.click(), 'cc-ghost'), file, prev, field('What can drop', list), sumEl);
+    getData = () => {
+      const d = { pool: [...pool.entries()].filter(([, wt]) => wt > 0).map(([item, weight]) => ({ item, weight })) };
+      if (/^https:\/\//.test(url.value.trim())) d.url = url.value.trim(); else d.emoji = emo.value.trim() || '🎁';
+      return d;
+    };
+    setTimeout(paint);
+  } else if (ADM.kind === 'gift') {
     let look = 'emoji';
     const emo = textInput('Emoji, e.g. 🐉');
     emo.maxLength = 8;
@@ -5030,7 +5268,8 @@ function renderAdmin() {
   }
   box.append(wideBtn('Add to shop', async () => {
     const data = getData();
-    if ((ADM.kind === 'image' || ADM.kind === 'gif' || data.style === 'image' || (ADM.kind === 'gift' && !data.emoji)) && !/^https:\/\//.test(data.url || '')) return done('Upload a file or paste an https:// link');
+    if (ADM.kind === 'pack' && !(data.pool && data.pool.length)) return done('Tick at least one gift for the pack');
+    if ((ADM.kind === 'image' || ADM.kind === 'gif' || data.style === 'image' || (ADM.kind === 'gift' && !data.emoji) || (ADM.kind === 'pack' && !data.emoji)) && !/^https:\/\//.test(data.url || '')) return done('Upload a file or paste an https:// link');
     try {
       await onlineCall('adminAdd', { kind: ADM.kind, name: name.value, price: price.value, data, supply: supplyIn ? supplyIn.value : null });
       done('Added ✓', true);
