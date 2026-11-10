@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, shell, screen, desktopCapturer, dialog, glo
 const path = require('path');
 const fs = require('fs');
 const { DiscordRPC } = require('./discord-rpc');
+const { ScxOnline } = require('./scx-online');
 
 // Look like regular Chrome so Google/Apple sign-in doesn't complain
 app.userAgentFallback = app.userAgentFallback
@@ -180,9 +181,11 @@ function createSplash() {
   splash.loadFile(path.join(__dirname, 'splash.html'), { query: { v: app.getVersion() } });
   splash.on('closed', () => { splash = null; });
 }
+let splashDone = false;
 function finishSplash() {
-  if (!win || win.isVisible()) return;
-  const wait = Math.max(0, 1400 - (Date.now() - splashAt)); // let the animation play at least once
+  if (!win || splashDone) return;
+  splashDone = true;
+  const wait = Math.max(0, 900 - (Date.now() - splashAt)); // let the animation play at least once
   setTimeout(() => {
     if (!win) return;
     if (splash) splash.webContents.executeJavaScript('document.body.classList.add("done")').catch(() => {});
@@ -261,13 +264,16 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  // open as soon as SoundCloud's interface is on screen (the page tells us), not after every ad has loaded
+  ipcMain.once('page-ready', finishSplash);
+  win.webContents.once('dom-ready', () => setTimeout(finishSplash, 4000));
   win.webContents.once('did-finish-load', finishSplash);
-  setTimeout(finishSplash, 15000); // never wait forever
+  setTimeout(finishSplash, 9000); // never wait forever
   win.on('restore', () => toPage('anim', 'in'));
   win.webContents.on('dom-ready', () => {
     for (const k of Object.keys(cssKeys)) delete cssKeys[k];
     win.webContents.insertCSS(BAR_CSS);
-    toPage('assets', { icon: ICON_URL });
+    toPage('assets', { icon: ICON_URL, version: app.getVersion() });
     sendMode();
     sendMiniState();
   });
@@ -326,7 +332,26 @@ ipcMain.on('save-theme', async (_e, json) => {
   }
 });
 ipcMain.on('show-file', (_e, file) => {
-  if (typeof file === 'string' && file.endsWith('.scxtheme')) shell.showItemInFolder(file);
+  if (typeof file === 'string' && /\.(scxtheme|scxmap)$/.test(file)) shell.showItemInFolder(file);
+});
+
+// beat map files (.scxmap)
+ipcMain.on('save-file', async (_e, req) => {
+  try {
+    if (!req || req.kind !== 'map' || typeof req.json !== 'string' || req.json.length > 5e6) return;
+    const name = String(req.name || 'beat map').replace(/[\\/:*?"<>|]+/g, '').slice(0, 60) || 'beat map';
+    const r = await dialog.showSaveDialog(win, {
+      title: 'Save SCX beat map',
+      defaultPath: path.join(downloadsDir(), name + '.scxmap'),
+      filters: [{ name: 'SCX beat map', extensions: ['scxmap'] }],
+    });
+    if (r.canceled || !r.filePath) return;
+    fs.mkdirSync(path.dirname(r.filePath), { recursive: true });
+    fs.writeFileSync(r.filePath, req.json, 'utf8');
+    toPage('theme-saved', { ok: true, file: r.filePath, what: 'Beat map' });
+  } catch (err) {
+    toPage('theme-saved', { ok: false, error: String((err && err.message) || err) });
+  }
 });
 
 ipcMain.on('open-downloads', () => {
@@ -431,6 +456,14 @@ ipcMain.on('mini-player', (_e, action) => {
 });
 
 app.on('second-instance', showMain);
+// ---------- SCX Online (Supabase)
+let online = null;
+ipcMain.handle('online', async (e, req) => {
+  if (!win || e.sender !== win.webContents) throw new Error('Not allowed');
+  if (!online) online = new ScxOnline(path.join(app.getPath('userData'), 'scx-online.json'));
+  return online.handle(req || {});
+});
+
 ipcMain.on('hotkey', (_e, k) => {
   if (k === 'main') toggleMain();
   else if (k === 'mini') toggleMiniHotkey();
