@@ -17,9 +17,16 @@
 
 ---
 
+## 🆕 What's new in v2.1
+
+- 📦 **Gift packs** — open a 🎁 and get one of the gifts shown on it, with the chance of each in %
+- 🔁 **Pass gifts and packs** you have to someone else (a gift keeps its number)
+- 🔑 **Recovery code** — get your profile back on a new PC (coins, gifts, followers)
+- 🔤 Nicks don't care about upper / lower case anymore (`W1CKIX` = `w1ckix`)
+
 ## 🆕 What's new in v2.0
 
-- 🎁 **Gifts like in Telegram** — emoji or picture gifts with 7 rarities, limited editions with numbers (#12)
+- 🎁 **Gifts nft** — emoji or picture gifts with 7 rarities, limited editions with numbers (#12)
 - 🪙 **Send coins, gifts, tags and frames** to other SCX users, with a message
 - 📌 **Pin up to 3 gifts** on your profile — visible in SCX and on your SoundCloud page
 - 🌸 **Picture frames** — a picture / GIF behind or over your profile picture, like Discord avatar decorations
