@@ -1,7 +1,7 @@
 {
   "name": "soundcloud-app",
   "productName": "SoundCloudX",
-  "version": "2.1.0",
+  "version": "2.8.1",
   "description": "SoundCloudX - SoundCloud desktop app for Windows",
   "main": "main.js",
   "scripts": {

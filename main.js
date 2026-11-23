@@ -178,7 +178,10 @@ function createSplash() {
     icon: path.join(__dirname, 'icon.ico'),
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
-  splash.loadFile(path.join(__dirname, 'splash.html'), { query: { v: app.getVersion() } });
+  let col = {};
+  try { col = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'scx-splash.json'), 'utf8')) || {}; } catch {}
+  const ok = (c) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '');
+  splash.loadFile(path.join(__dirname, 'splash.html'), { query: { v: app.getVersion(), c: ok(col.c), c2: ok(col.c2) } });
   splash.on('closed', () => { splash = null; });
 }
 let splashDone = false;
@@ -469,9 +472,95 @@ ipcMain.on('hotkey', (_e, k) => {
   else if (k === 'mini') toggleMiniHotkey();
 });
 
+// the page tells us its theme color → the next loading screen uses it
+ipcMain.on('theme-color', (e, c) => {
+  if (!win || e.sender !== win.webContents || !c) return;
+  const ok = (x) => (/^#[0-9a-f]{6}$/i.test(x || '') ? x : null);
+  const data = { c: ok(c.c), c2: ok(c.c2) };
+  if (!data.c) return;
+  try { fs.writeFileSync(path.join(app.getPath('userData'), 'scx-splash.json'), JSON.stringify(data)); } catch {}
+});
+
+// ================================================================ AUTO-UPDATE (from the GitHub releases)
+const UPD_REPO = 'naga7756441-afk/SoundCloudX';
+const upd = { state: 'idle', version: '', file: '', error: '', progress: 0, url: '' };
+const isPortable = () => !!process.env.PORTABLE_EXECUTABLE_DIR;
+const verNum = (v) => String(v || '').replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0);
+function newer(a, b) { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; }
+function updSend() { if (win && !win.isDestroyed()) win.webContents.send('update', Object.assign({ current: app.getVersion(), portable: isPortable() }, upd)); }
+function httpGet(url, opts, depth = 0) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' || !/(^|\.)(github\.com|githubusercontent\.com)$/i.test(u.hostname)) return reject(new Error('Bad update host'));
+    const req = https.get(url, { headers: { 'User-Agent': 'SoundCloudX-updater', Accept: opts.accept || '*/*' } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && depth < 5) {
+        res.resume();
+        return resolve(httpGet(new URL(res.headers.location, url).toString(), opts, depth + 1));
+      }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('GitHub answered ' + res.statusCode)); }
+      resolve(res);
+    });
+    req.on('error', reject);
+    req.setTimeout(30000, () => req.destroy(new Error('Timeout')));
+  });
+}
+async function checkUpdate(manual) {
+  if (upd.state === 'downloading' || upd.state === 'ready') { updSend(); return; }
+  upd.state = 'checking'; upd.error = ''; updSend();
+  try {
+    const res = await httpGet('https://api.github.com/repos/' + UPD_REPO + '/releases/latest', { accept: 'application/vnd.github+json' });
+    let body = '';
+    for await (const ch of res) { body += ch; if (body.length > 2e6) throw new Error('Too big'); }
+    const rel = JSON.parse(body);
+    const ver = String(rel.tag_name || '').replace(/^v/i, '');
+    if (!ver || !newer(ver, app.getVersion())) { upd.state = 'latest'; upd.version = ver; updSend(); return; }
+    upd.version = ver;
+    upd.url = 'https://github.com/' + UPD_REPO + '/releases/latest';
+    const asset = (rel.assets || []).find((a) => /\.exe$/i.test(a.name) && /setup/i.test(a.name) && !/portable/i.test(a.name));
+    if (isPortable() || !asset) { upd.state = 'available'; updSend(); return; } // portable: only tell about it
+    upd.state = 'downloading'; upd.progress = 0; updSend();
+    const file = path.join(app.getPath('temp'), 'SoundCloudX-update-' + ver.replace(/[^0-9.]/g, '') + '.exe');
+    const res2 = await httpGet(asset.browser_download_url, {});
+    const total = Number(res2.headers['content-length']) || asset.size || 0;
+    await new Promise((resolve, reject) => {
+      const out = fs.createWriteStream(file);
+      let got = 0, last = 0;
+      res2.on('data', (ch) => { got += ch.length; if (total && Date.now() - last > 400) { last = Date.now(); upd.progress = got / total; updSend(); } });
+      res2.on('error', reject);
+      out.on('error', reject);
+      out.on('finish', () => (got < 1e6 ? reject(new Error('Download was too small')) : resolve()));
+      res2.pipe(out);
+    });
+    upd.file = file; upd.state = 'ready'; upd.progress = 1; updSend();
+  } catch (e) {
+    upd.state = 'error'; upd.error = String((e && e.message) || e); updSend();
+    if (!manual) upd.state = 'idle';
+  }
+}
+// open the SCX Discord server invite in the browser (only real Discord invite links)
+ipcMain.on('open-discord', (e, url) => {
+  if (!win || e.sender !== win.webContents) return;
+  if (/^https:\/\/(discord\.gg|(www\.)?discord\.com\/invite)\/[A-Za-z0-9-]{2,40}\/?$/.test(String(url || ''))) shell.openExternal(url);
+});
+ipcMain.on('update', (e, what) => {
+  if (!win || e.sender !== win.webContents) return;
+  if (what === 'check') checkUpdate(true);
+  else if (what === 'status') updSend();
+  else if (what === 'open') shell.openExternal('https://github.com/' + UPD_REPO + '/releases/latest');
+  else if (what === 'install' && upd.state === 'ready' && upd.file && fs.existsSync(upd.file)) {
+    // the installer updates SoundCloudX in place (settings + login stay) and starts it again
+    const { spawn } = require('child_process');
+    spawn(upd.file, ['/S', '--force-run'], { detached: true, stdio: 'ignore' }).unref();
+    setTimeout(() => app.quit(), 300);
+  }
+});
+
 app.whenReady().then(() => {
   createSplash();
   createWindow();
+  // look for an update 15 s after start, then every 6 hours (only when it is switched on in SCX)
+  setTimeout(() => updSend(), 12000);
   // work everywhere in Windows, even when SoundCloudX is in the background
   try {
     globalShortcut.register('CommandOrControl+Alt+P', toggleMiniHotkey);

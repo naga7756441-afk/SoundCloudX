@@ -46,9 +46,13 @@ const S = {
   keys: loadJSON('ccx_keys', { on: true }),
   game: loadJSON('ccx_game', { diff: 'normal', keys: 'all', sound: true, best: {}, auto: false, offset: 0, mode: 'record' }),
   online: loadJSON('ccx_online', { show: true }),
+  upd: loadJSON('ccx_upd', { auto: true }),
+  tk: loadJSON('ccx_tk', { show: true, anim: true }),
 };
 const saveAll = () => {
   saveJSON('ccx_viz', S.viz);
+  saveJSON('ccx_upd', S.upd);
+  saveJSON('ccx_tk', S.tk);
   saveJSON('ccx_mini', S.mini);
   saveJSON('ccx_boost', S.boost);
   saveJSON('ccx_theme', S.theme);
@@ -337,7 +341,36 @@ function buildPlayerTab() {
     miniBtn.classList.toggle('cc-ghost', miniPlayerOpen);
   });
 
+  const minBtn = wideBtn('🎧  Minimal mode', () => { togglePanel(false); toggleMinimal(true); });
+  const updLine = note('');
+  const updBtn = wideBtn('Check for updates', () => ipcRenderer.send('update', 'check'), 'cc-ghost');
+  refreshers.push(() => {
+    const u = UPD.last || {};
+    updLine.textContent = 'SoundCloudX v' + (u.current || appVersion || '?') + '  ·  ' + ({
+      checking: 'checking…', latest: 'you have the newest version ✓', downloading: 'downloading v' + u.version + '… ' + Math.round((u.progress || 0) * 100) + '%',
+      ready: 'v' + u.version + ' is ready — restart to install', available: 'v' + u.version + ' is out', error: 'could not check: ' + (u.error || ''),
+    }[u.state] || 'updates come from GitHub');
+    updBtn.textContent = u.state === 'ready' ? '⟳  Restart and update' : u.state === 'available' ? 'Open the download page' : 'Check for updates';
+  });
+  updBtn.addEventListener('click', (e) => {
+    const u = UPD.last || {};
+    if (u.state === 'ready') { e.stopImmediatePropagation(); ipcRenderer.send('update', 'install'); }
+    else if (u.state === 'available') { e.stopImmediatePropagation(); ipcRenderer.send('update', 'open'); }
+  }, true);
   t.append(
+    sectionTitle('Updates'),
+    toggleRow('Download updates by itself', () => S.upd.auto, (v) => { S.upd.auto = v; saveAll(); refreshPanel(); }),
+    updBtn,
+    updLine,
+    sectionTitle('Minimal mode'),
+    note('Only a big player, Next up and songs like this one. X + M or Esc to leave.'),
+    minBtn,
+    sectionTitle('Vinyl mode'),
+    note('A record player: the song spins on a vinyl, the needle drops when it plays and the room pulses with the bass. X + V or Esc to leave.'),
+    wideBtn('💿  Vinyl mode', () => { togglePanel(false); toggleVinyl(true); }, 'cc-ghost'),
+    sectionTitle('Studio mode'),
+    note('All the buttons: speed, A–B loop, 4 hot cues, sleep timer, bass boost, shuffle / repeat, spectrum. X + S or Esc to leave.'),
+    wideBtn('🎛️  Studio mode', () => { togglePanel(false); toggleStudio(true); }, 'cc-ghost'),
     sectionTitle('Mini Player'),
     cards(
       [['classic', 'Classic', 'cc-pv-classic', 3], ['ball', 'Ball', 'cc-pv-ball', 1],
@@ -359,7 +392,7 @@ function buildPlayerTab() {
     toggleRow('Thick progress bar', () => S.bar.thick, (v) => { S.bar.thick = v; saveAll(); applyCSS(); refreshPanel(); }),
     note('Progress bar color is set in Theme → Sliders.'),
     sectionTitle('Hotkeys'),
-    toggleRow('X + P / X + O', () => S.keys.on, (v) => { S.keys.on = v; saveAll(); refreshPanel(); }),
+    toggleRow('X + P / X + O / X + M / X + V / X + S', () => S.keys.on, (v) => { S.keys.on = v; saveAll(); refreshPanel(); }),
     note('Hold X and press P to open / close the mini player, X + O to show / hide SoundCloudX. Works while SoundCloudX or the mini player is active.'),
     note('Anywhere in Windows (even in a game or browser): Ctrl + Alt + P and Ctrl + Alt + O.')
   );
@@ -394,6 +427,31 @@ function imageInput(onImage) {
   });
   return f;
 }
+
+// moving backgrounds in your color (tint), original colors by default
+function sceneFilter() {
+  const m = S.bg.tint || 'original';
+  if (m === 'original') return '';
+  const col = m === 'theme' ? accentColor() : S.bg.tintColor || '#ff5500';
+  const hs = hexHue(col);
+  return `sepia(1) saturate(${(1 + hs.s * 4).toFixed(2)}) hue-rotate(${Math.round(hs.h - 38)}deg)`;
+}
+function applySceneTint() {
+  const cv = document.querySelector('#cc-bg canvas.cc-scene');
+  if (cv) cv.style.filter = sceneFilter();
+}
+function sceneColorRow() {
+  const w = el('div');
+  const col = colorInputPlain(S.bg.tintColor || '#ff5500');
+  col.addEventListener('input', () => { S.bg.tintColor = col.value; S.bg.tint = 'custom'; saveAll(); applySceneTint(); refreshPanel(); });
+  const row = el('div', 'cc-tintrow');
+  row.append(segmented([['original', 'Original'], ['theme', 'Theme color'], ['custom', 'Custom']], () => S.bg.tint || 'original',
+    (v) => { S.bg.tint = v; saveAll(); applySceneTint(); refreshPanel(); }), col);
+  w.append(el('small', 'cc-gstep', 'Background color'), row);
+  refreshers.push(() => { col.style.visibility = (S.bg.tint || 'original') === 'custom' ? 'visible' : 'hidden'; });
+  return w;
+}
+function colorInputPlain(v) { const i = el('input', 'cc-color'); i.type = 'color'; i.value = v; return i; }
 
 function buildThemeTab() {
   const t = el('div', 'cc-tab');
@@ -478,6 +536,7 @@ function buildThemeTab() {
   t.append(
     sectionTitle('Themes'),
     grid,
+    sceneColorRow(),
     note('Every theme is a moving background with matching colors. Change anything below afterwards.'),
     fileRow,
     themeFile,
@@ -518,7 +577,153 @@ function buildThemeTab() {
       saveAll(); applyCSS(); applyBg(); refreshPanel();
     }, 'cc-ghost')
   );
+  t.append(sectionTitle('★ Multi-color (Premium)'), multiBox());
+  t.append(sectionTitle('★ My CSS (Premium)'), cssBox());
   return t;
+}
+
+// ---- Premium: several theme colors at once — flow / jump / plasma, by itself or to the music
+const multiCfg = () => Object.assign({ on: false, colors: ['#ff2a6d', '#7a04eb', '#00e5ff'], mode: 'flow', drive: 'auto', speed: 1 }, S.theme.multi || {});
+const multiOn = () => !!(ON.me && ON.me.premium && multiCfg().on && multiCfg().colors.length >= 2);
+const MC = { raf: 0, last: 0, pos: 0, idx: 0, beatAt: 0, avg: 0, cur: null };
+const hexRgb = (h) => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const rgbHex = (c) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+function multiTick(now) {
+  MC.raf = requestAnimationFrame(multiTick);
+  if (now - MC.last < 33) return;
+  const dt = Math.min(0.1, (now - MC.last) / 1000);
+  MC.last = now;
+  const cfg = multiCfg();
+  const cols = cfg.colors.map(hexRgb), n = cols.length;
+  let bass = 0, beat = false;
+  if (cfg.drive === 'music') {
+    const f = gameAudio();
+    if (f) { for (let i = 1; i <= 8; i++) bass += f[i]; bass /= 8 * 255; }
+    MC.avg = MC.avg * 0.95 + bass * 0.05;
+    if (bass > MC.avg * 1.35 + 0.04 && now - MC.beatAt > 220) { beat = true; MC.beatAt = now; }
+  }
+  const sp = Math.max(0.1, Number(cfg.speed) || 1);
+  let col;
+  if (cfg.mode === 'jump') {
+    if (cfg.drive === 'music' ? beat : now - MC.beatAt > 1200 / sp) { MC.idx = (MC.idx + 1) % n; if (cfg.drive !== 'music') MC.beatAt = now; }
+    const target = cols[MC.idx];
+    MC.cur = MC.cur ? MC.cur.map((v, i) => v + (target[i] - v) * 0.45) : target.slice();
+    col = MC.cur;
+  } else {
+    MC.pos += dt * sp * (cfg.drive === 'music' ? 0.08 + bass * 2.2 + (beat ? 0.35 : 0) : 0.25);
+    const i = Math.floor(MC.pos) % n, fr = MC.pos - Math.floor(MC.pos);
+    const a = cols[i], b = cols[(i + 1) % n];
+    col = a.map((v, k) => v + (b[k] - v) * (fr * fr * (3 - 2 * fr)));
+  }
+  const hex = rgbHex(col);
+  const r = document.documentElement;
+  r.style.setProperty('--ccx-live', hex);
+  r.style.setProperty('--ccx-accent', hex);
+  r.style.setProperty('--ccx-wrot', Math.round(hexHue(hex).h - 20) + 'deg');
+  if (cfg.mode === 'plasma') r.style.setProperty('--ccx-gp', ((MC.pos * 40) % 300).toFixed(1) + '%');
+}
+function applyMulti() {
+  const on = multiOn();
+  const r = document.documentElement;
+  if (!r) return;
+  r.classList.toggle('ccx-plasma', on && multiCfg().mode === 'plasma');
+  multiMusicOn = on && multiCfg().drive === 'music';
+  if (on) {
+    const cfg = multiCfg();
+    r.style.setProperty('--ccx-grad', 'linear-gradient(90deg,' + cfg.colors.concat(cfg.colors[0]).join(',') + ')');
+    if (!MC.raf) { MC.last = performance.now(); MC.raf = requestAnimationFrame(multiTick); }
+    if (cfg.drive === 'music') ensureAudio().catch(() => {});
+  } else if (MC.raf) {
+    cancelAnimationFrame(MC.raf);
+    MC.raf = 0;
+    ['--ccx-live', '--ccx-wrot', '--ccx-gp', '--ccx-grad'].forEach((k) => r.style.removeProperty(k));
+    r.style.setProperty('--ccx-accent', accentColor());
+  }
+}
+function multiBox() {
+  const w = el('div', 'cc-cssbox cc-multibox');
+  const info = note('');
+  const body = el('div');
+  const save = (patch) => { S.theme.multi = Object.assign(multiCfg(), patch); saveAll(); applyCSS(); applyMulti(); paint(); };
+  const paint = () => {
+    const cfg = multiCfg();
+    body.textContent = '';
+    const row = el('div', 'cc-colrow');
+    cfg.colors.forEach((c, i) => {
+      const wrap = el('span', 'cc-colpick');
+      const inp = colorInputPlain(c);
+      inp.addEventListener('change', () => { const cols = cfg.colors.slice(); cols[i] = inp.value; save({ colors: cols }); });
+      wrap.append(inp);
+      if (cfg.colors.length > 2) { const x = el('button', 'cc-colx', '✕'); x.addEventListener('click', () => save({ colors: cfg.colors.filter((_, k) => k !== i) })); wrap.append(x); }
+      row.append(wrap);
+    });
+    if (cfg.colors.length < 6) { const plus = el('button', 'cc-sbtn cc-ghostbtn', '+ color'); plus.addEventListener('click', () => save({ colors: cfg.colors.concat('#ffffff') })); row.append(plus); }
+    const prev = el('div', 'cc-multiprev');
+    prev.style.background = 'linear-gradient(90deg,' + cfg.colors.join(',') + ')';
+    body.append(
+      toggleRow('Multi-color on', () => multiCfg().on, (v) => save({ on: v })),
+      field('Colors', row), prev,
+      field('Mode', segmented([['flow', '🌊 Flow'], ['jump', '⚡ Jump'], ['plasma', '🔮 Plasma']], () => multiCfg().mode, (v) => save({ mode: v }))),
+      field('Moves', segmented([['auto', '⏱ By itself'], ['music', '🎵 To the music']], () => multiCfg().drive, (v) => save({ drive: v }))),
+      sliderRow('Speed', 0.2, 3, 0.1, () => multiCfg().speed, (v) => save({ speed: v }), (v) => v.toFixed(1) + '×')
+    );
+  };
+  w.append(info, body);
+  refreshers.push(() => {
+    const locked = !(ON.me && ON.me.premium);
+    w.classList.toggle('cc-locked', locked);
+    info.textContent = locked ? '★ With SCX Premium your theme can have several colors at once: they flow, jump to the beat or turn into plasma.'
+      : 'Flow = colors melt into each other · Jump = they switch (to the beat with "To the music") · Plasma = flowing gradient on the bars.';
+    if (!body.firstChild) paint();
+  });
+  return w;
+}
+
+// ---- Premium: write your own CSS → your own theme. Saved only on this PC, never sent anywhere
+let userCss = '';
+try { userCss = localStorage.getItem('ccx_user_css') || ''; } catch {}
+function applyUserCss() {
+  const on = !!(ON.me && ON.me.premium) && userCss.trim();
+  ipcRenderer.send('css', { key: 'ccx-user', css: on ? userCss.slice(0, 100000) : '' });
+}
+function cssBox() {
+  const w = el('div', 'cc-cssbox');
+  const area = el('textarea', 'cc-text cc-area cc-code');
+  area.spellcheck = false;
+  area.placeholder = '/* your CSS, e.g. */\nbody { filter: hue-rotate(40deg); }\n#cc-panel { border-radius: 0 20px 20px 0; }';
+  area.value = userCss;
+  const status = el('div', 'cc-status');
+  const row = el('div', 'cc-btnrow');
+  const save = wideBtn('Apply', () => {
+    if (!(ON.me && ON.me.premium)) return toast('★ This is for SCX Premium');
+    userCss = area.value.slice(0, 100000);
+    try { localStorage.setItem('ccx_user_css', userCss); } catch {}
+    applyUserCss();
+    status.textContent = userCss.trim() ? '✓ Applied (only on this PC)' : 'Off';
+    status.classList.add('cc-good');
+  });
+  const off = wideBtn('Turn off', () => {
+    userCss = '';
+    area.value = '';
+    try { localStorage.removeItem('ccx_user_css'); } catch {}
+    applyUserCss();
+    status.textContent = 'Off';
+  }, 'cc-ghost');
+  row.append(save, off);
+  area.addEventListener('keydown', (e) => {
+    e.stopPropagation(); // typing CSS must not trigger SoundCloud / SCX hotkeys
+    if (e.key === 'Tab') { e.preventDefault(); const p = area.selectionStart; area.setRangeText('  ', p, area.selectionEnd, 'end'); }
+  });
+  const info = note('');
+  w.append(info, area, row, status);
+  refreshers.push(() => {
+    const locked = !(ON.me && ON.me.premium);
+    w.classList.toggle('cc-locked', locked);
+    area.disabled = locked;
+    info.textContent = locked ? '★ With SCX Premium you can write your own CSS and make SoundCloud + SCX look exactly how you want.'
+      : 'Your CSS is saved only on this PC — it is not sent to the server and nobody else sees it.';
+  });
+  return w;
 }
 
 // ---------- images (also GIFs) live in IndexedDB, so they keep their animation and can be big
@@ -756,8 +961,22 @@ function buildDiscordTab() {
     pvBar.firstChild.style.width = Math.round((tr.progress || 0.35) * 100) + '%';
   });
 
+  const join = el('div', 'cc-djoin');
+  refreshers.push(() => {
+    join.textContent = '';
+    join.style.display = okInvite(CFG.discord) ? '' : 'none';
+    if (!okInvite(CFG.discord)) return;
+    const b = el('button', 'cc-djoin-btn', 'Join');
+    b.addEventListener('click', () => ipcRenderer.send('open-discord', CFG.discord));
+    const tx = el('div');
+    tx.append(el('b', null, '💬 Join our Discord server'), el('span', null, 'for gifts and free ★ Premium'));
+    join.append(tx, b);
+  });
   const adv = el('details', 'cc-adv');
-  const sum = el('summary', null, 'Advanced: use your own Discord app');
+  const sum = el('summary', null, '★ Advanced: use your own Discord app (Premium)');
+  adv.addEventListener('toggle', () => {
+    if (adv.open && !(ON.me && ON.me.premium)) { adv.open = false; toast('★ Advanced Discord settings are for SCX Premium'); }
+  });
   adv.append(
     sum,
     note('SoundCloudX already has its own Discord app built in, so nothing needs to be set up. Only fill this in if you made your own app in the Discord Developer Portal.'),
@@ -768,6 +987,7 @@ function buildDiscordTab() {
   );
 
   t.append(
+    join,
     sectionTitle('Discord Rich Presence'),
     toggleRow('Show in Discord', () => S.rpc.on, (v) => { S.rpc.on = v; saveAll(); sendRpcConfig(); refreshPanel(); }),
     status,
@@ -800,7 +1020,10 @@ function injectPanel() {
   const paintCoins = () => { coinBadge.textContent = '🪙 ' + coinBalance().toLocaleString('en-US'); };
   paintCoins();
   COINS.onChange(paintCoins);
-  head.append(logo, coinBadge, closeB);
+  const restartB = el('button', 'cc-pclose cc-restart', '⟳');
+  restartB.title = 'Restart SCX (reload the page)';
+  restartB.addEventListener('click', () => location.reload());
+  head.append(logo, coinBadge, restartB, closeB);
 
   const tabsRow = el('div', 'cc-tabs');
   const body = el('div', 'cc-pbody');
@@ -837,7 +1060,7 @@ function injectPanel() {
   const right = el('div', 'cc-right');
   right.append(body, statusEl);
   main.append(tabsRow, right);
-  panel.append(head, main, el('div', 'cc-foot', 'X+P mini player  •  X+O SoundCloudX  •  F11 full screen'));
+  panel.append(head, main, el('div', 'cc-foot', 'X+P mini player  •  X+O SoundCloudX  •  X+M minimal'));
   document.body.append(backdrop, panel);
   refreshPanel();
 }
@@ -875,6 +1098,16 @@ const BG_VARS = ['--background-surface-color', '--surface-color', '--background-
 const HL_VARS = ['--highlight-color', '--background-highlight-color', '--button-secondary-background-color',
   '--input-default-background-color', '--tag-default-background-color', '--button-secondary-active-background-color'];
 
+function hexHue(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return { h: 20, s: 1 };
+  const n = parseInt(m[1], 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  const l = (mx + mn) / 2;
+  return { h: (h * 60 + 360) % 360, s: d ? d / (1 - Math.abs(2 * l - 1)) : 0 };
+}
 function themeCSS() {
   const th = S.theme;
   const v = [];
@@ -892,16 +1125,37 @@ function themeCSS() {
     put(TEXT_VARS, th.text);
     put(['--primary-rgb'], rgbStr(th.text));
   }
-  if (th.accent) {
+  const multi = multiOn();
+  if (multi) {
+    // Premium multi-color: the color changes all the time → everything reads one live variable
+    put(ORANGE_VARS, 'var(--ccx-live)');
+    put(ORANGE_FADE_VARS, 'color-mix(in srgb, var(--ccx-live) 40%, transparent)');
+    put(['--special-rgb'], rgbStr(th.accent || '#ff5500'));
+    extra += `.playbackTimeline__progressBar,.volume__sliderProgress{background:var(--ccx-live)!important}
+      .playbackTimeline__progressHandle{border-color:var(--ccx-live)!important}
+      .waveform canvas,.waveform__layer canvas{filter:hue-rotate(var(--ccx-wrot,0deg))!important}
+      html.ccx-plasma .playbackTimeline__progressBar,html.ccx-plasma .volume__sliderProgress{background:var(--ccx-grad)!important;background-size:300% 100%!important;background-position:var(--ccx-gp,0%) 0!important}
+      html.ccx-plasma #cc-panel{border-right:2px solid transparent!important;border-image:var(--ccx-grad) 1!important}
+      html.ccx-plasma .playControls__inner{box-shadow:0 -2px 0 0 var(--ccx-live)!important}`;
+  } else if (th.accent) {
     put(ORANGE_VARS, th.accent);
     put(ORANGE_FADE_VARS, `rgba(${rgbStr(th.accent)},0.4)`);
     put(['--special-rgb'], rgbStr(th.accent));
   }
-  if (th.slider || th.accent) {
+  if (!multi && (th.slider || th.accent)) {
     const sl = sliderColor();
     extra += `.playbackTimeline__progressBar{background-color:${sl}!important}
       .playbackTimeline__progressHandle{border-color:${sl}!important}
       .volume__sliderProgress{background-color:${sl}!important}`;
+  }
+  // SoundCloud's orange waveform (and its little time box) → theme color. Grey parts stay grey
+  if (S.theme.wave !== false && !multi) {
+    const hs = hexHue(accentColor());
+    const rot = Math.round(hs.h - 20);
+    if (Math.abs(rot) > 3 || hs.s < 0.5) {
+      const f = `hue-rotate(${rot}deg) saturate(${Math.max(0.15, hs.s).toFixed(2)})`;
+      extra += `.waveform canvas,.waveform__layer canvas,[class*="waveform__"][class*="Time"],[class*="waveform__"][class*="ime "]{filter:${f}!important}`;
+    }
   }
   const vars = v.length ? `html body,html body.theme-dark,html body.theme-light{${v.join(';')}}` : '';
   return vars + extra;
@@ -941,6 +1195,8 @@ function applyCSS() {
   document.documentElement.style.setProperty('--ccx-accent', accentColor());
   applyBgVars();
   applyMenu();
+  applySceneTint();
+  ipcRenderer.send('theme-color', { c: accentColor(), c2: lighten(accentColor(), 0.35) }); // next loading screen in your color
 }
 
 // ================================================================ SOUNDBOOST (runs in the page itself)
@@ -950,7 +1206,7 @@ const MAIN_WORLD = `(() => {
   const orig = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function () {
     X.els.add(this);
-    if (X.on) X.attach(this);
+    if (X.on || X.fxOn) X.attach(this);
     if (X.ctx && X.ctx.state === 'suspended') X.ctx.resume();
     return orig.apply(this, arguments);
   };
@@ -964,17 +1220,77 @@ const MAIN_WORLD = `(() => {
       X.g = X.ctx.createGain();
       X.lim = X.ctx.createDynamicsCompressor();
       X.lim.knee.value = 4; X.lim.attack.value = 0.003; X.lim.release.value = 0.2;
-      X.lo.connect(X.g); X.g.connect(X.lim); X.lim.connect(X.ctx.destination);
+      X.hp = X.ctx.createBiquadFilter(); X.hp.type = 'highpass'; X.hp.frequency.value = 10;
+      X.lp = X.ctx.createBiquadFilter(); X.lp.type = 'lowpass'; X.lp.frequency.value = 22000;
+      X.pan = X.ctx.createStereoPanner();
+      X.fg = X.ctx.createGain();
+      X.lo.connect(X.hp); X.hp.connect(X.lp); X.lp.connect(X.pan); X.pan.connect(X.g); X.g.connect(X.fg); X.fg.connect(X.lim); X.lim.connect(X.ctx.destination);
+      if (!X.on) { X.lim.threshold.value = 0; X.lim.ratio.value = 1; }
+      const f = X.fxState || {};
+      if (f.hp != null) X.hp.frequency.value = f.hp;
+      if (f.lp != null) X.lp.frequency.value = f.lp;
     }
     try { const n = X.ctx.createMediaElementSource(m); n.connect(X.lo); X.nodes.set(m, n); } catch (e) {}
+  };
+  // remember the key SoundCloud's own site uses for its API (Minimal mode: related tracks)
+  const grab = (u) => { try { const m = String(u || '').match(/api-v2\\.soundcloud\\.com\\/[^?]*\\?(?:.*&)?client_id=([A-Za-z0-9]{16,64})/); if (m) X.cid = m[1]; } catch (e) {} };
+  const xo = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (mt, u) { grab(u); return xo.apply(this, arguments); };
+  const of = window.fetch;
+  window.fetch = function (u) { grab(u && u.url ? u.url : u); return of.apply(this, arguments); };
+  X.related = async (url) => {
+    if (!X.cid) return { err: 'nokey' };
+    const q = (p) => 'https://api-v2.soundcloud.com' + p + (p.includes('?') ? '&' : '?') + 'client_id=' + X.cid;
+    const t = await (await of(q('/resolve?url=' + encodeURIComponent(url)))).json();
+    if (!t || !t.id) return { err: 'notrack' };
+    const r = await (await of(q('/tracks/' + t.id + '/related?limit=12'))).json();
+    return { list: (r.collection || []).filter((x) => x && x.permalink_url).map((x) => ({
+      title: x.title, url: x.permalink_url, artist: (x.user && x.user.username) || '', art: x.artwork_url || (x.user && x.user.avatar_url) || '', dur: (x.duration || 0) / 1000,
+    })) };
   };
   // exact song time for SCX Beat (the page's audio element is not reachable from SCX otherwise)
   setInterval(() => {
     let m = null;
     X.els.forEach((e) => { if (!e.paused) m = e; });
     if (!m) X.els.forEach((e) => { m = e; });
+    if (m && X.rate && Math.abs(m.playbackRate - X.rate) > 0.001) { m.preservesPitch = X.pitch !== false; m.playbackRate = X.rate; }
     if (m) window.postMessage({ __ccx: 'clock', t: m.currentTime, d: m.duration || 0, p: !m.paused && !m.ended }, '*');
   }, 50);
+  // Studio effects: filters, balance, 8D, fades (only plugged in when used)
+  X.fx = (o) => {
+    X.fxOn = true;
+    X.fxState = Object.assign(X.fxState || {}, { hp: o.hp != null ? o.hp : (X.fxState || {}).hp, lp: o.lp != null ? o.lp : (X.fxState || {}).lp });
+    document.querySelectorAll('audio,video').forEach((m) => X.els.add(m));
+    X.els.forEach(X.attach);
+    if (!X.ctx) return 0;
+    const t = X.ctx.currentTime;
+    if (o.hp != null) X.hp.frequency.setTargetAtTime(o.hp, t, 0.08);
+    if (o.lp != null) X.lp.frequency.setTargetAtTime(o.lp, t, 0.08);
+    if (o.pan != null) X.panVal = o.pan;
+    if (o.d8 != null) X.d8 = o.d8;
+    if (X.ctx.state === 'suspended') X.ctx.resume();
+    return X.nodes.size;
+  };
+  // fades move the player's own volume, so they work even when the sound is not connected to the effects
+  X.fade = (to, sec) => {
+    clearInterval(X.fadeT);
+    const els = [...X.els];
+    if (!els.length) return 0;
+    if (X.baseVol == null || to >= 1) X.baseVol = X.baseVol != null ? X.baseVol : els[0].volume || 1;
+    const base = X.baseVol;
+    const from = els[0].volume, goal = Math.max(0, Math.min(1, to)) * base, t0 = performance.now(), ms = Math.max(30, sec * 1000);
+    X.fadeT = setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      els.forEach((m) => { try { m.volume = from + (goal - from) * k; } catch (e) {} });
+      if (k >= 1) { clearInterval(X.fadeT); if (to >= 1) X.baseVol = null; }
+    }, 30);
+    return els.length;
+  };
+  X.status = () => ({ els: X.els.size, nodes: X.nodes.size, ctx: X.ctx ? X.ctx.state : 'none', src: [...X.els].map((m) => String(m.currentSrc || m.src || '').slice(0, 6)).join(',') });
+  setInterval(() => {
+    if (!X.pan) return;
+    X.pan.pan.value = X.d8 ? Math.sin(performance.now() / 1000 * Math.PI * 2 * 0.1) * 0.9 : (X.panVal || 0);
+  }, 40);
   X.set = (on, gain, bass) => {
     X.on = on;
     document.querySelectorAll('audio,video').forEach((m) => X.els.add(m));
@@ -985,6 +1301,7 @@ const MAIN_WORLD = `(() => {
       X.lo.gain.setTargetAtTime(on ? bass : 0, t, 0.05);
       X.lim.threshold.value = on ? -3 : 0;
       X.lim.ratio.value = on ? 12 : 1;
+      if (!on && !X.fxOn) { /* nothing else */ }
       if (X.ctx.state === 'suspended') X.ctx.resume();
     }
     return X.nodes.size;
@@ -1093,10 +1410,10 @@ function releaseAudio() {
   stream = audioCtx = analyser = freq = gameAn = gameFreq = null;
 }
 
-let gameLiveOn = false;
+let gameLiveOn = false, vinylOn = false, studioOn = false, multiMusicOn = false;
 const miniNeedsBands = () => S.mini.soundBg || S.mini.style === 'ball' || S.mini.style === 'wave';
 const needAudio = () => S.viz.mode !== 'off' || S.viz.bassGlow || (miniPlayerOpen && miniNeedsBands())
-  || (S.bg.mode === 'scene' && SCENES[S.bg.scene] && SCENES[S.bg.scene].needsAudio) || REC.on
+  || (S.bg.mode === 'scene' && SCENES[S.bg.scene] && SCENES[S.bg.scene].needsAudio) || REC.on || vinylOn || studioOn || multiMusicOn
   || gameLiveOn;
 function maybeReleaseAudio() { if (!needAudio()) releaseAudio(); }
 
@@ -1714,8 +2031,36 @@ function userKey(btn) {
   return href.split('?')[0].split('/').filter(Boolean)[0] || '';
 }
 
+let lastUserClick = 0;
+document.addEventListener('click', () => { lastUserClick = Date.now(); }, true);
+const countedEl = new WeakMap();
+function countReaction(t, kind) {
+  if (countedEl.get(t) && Date.now() - countedEl.get(t) < 4000) return;
+  countedEl.set(t, Date.now());
+  const key = itemKey(t);
+  STATS.add(kind === 'like' ? 'likes' : 'reposts', 1);
+  if (kind === 'like') COINS.once('liked', key, 50, 'Like');
+  else COINS.once('reposted', key, 100, 'Repost');
+  if (S.fx[kind]) burst(t, kind);
+}
+const reactObs = new MutationObserver((list) => {
+  if (Date.now() - lastUserClick > 8000) return; // only changes that you made
+  for (const m of list) {
+    const t = m.target;
+    if (!t.classList || !(t.classList.contains('sc-button-repost') || t.classList.contains('sc-button-like'))) continue;
+    const was = (m.oldValue || '').includes('sc-button-selected'), now = t.classList.contains('sc-button-selected');
+    if (!was && now) countReaction(t, t.classList.contains('sc-button-repost') ? 'repost' : 'like');
+    else if (was && !now) STATS.add(t.classList.contains('sc-button-repost') ? 'reposts' : 'likes', -1);
+  }
+});
+// the page is still empty when SCX starts → watch it once it exists
+(function watchReactions() {
+  if (!document.documentElement) return setTimeout(watchReactions, 50);
+  reactObs.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+})();
+
 document.addEventListener('click', (e) => {
-  const t = e.target && e.target.closest && e.target.closest('.sc-button-repost, .sc-button-like, .sc-button-follow');
+  const t = e.target && e.target.closest && e.target.closest('.sc-button-follow');
   if (!t) return;
   const kind = t.classList.contains('sc-button-repost') ? 'repost' : t.classList.contains('sc-button-like') ? 'like' : 'follow';
   const was = t.classList.contains('sc-button-selected');
@@ -1723,12 +2068,9 @@ document.addEventListener('click', (e) => {
   setTimeout(() => {
     const now = t.classList.contains('sc-button-selected');
     if (was === now) return;
-    STATS.add(kind === 'like' ? 'likes' : kind === 'repost' ? 'reposts' : 'follows', now ? 1 : -1);
+    STATS.add('follows', now ? 1 : -1);
     if (!now) return;
-    if (kind === 'like') COINS.once('liked', key, 50, 'Like');
-    else if (kind === 'repost') COINS.once('reposted', key, 100, 'Repost');
-    else COINS.once('followed', key, 500, 'Follow');
-    if (kind !== 'follow' && S.fx[kind]) burst(t, kind);
+    COINS.once('followed', key, 500, 'Follow');
   }, 250);
 }, true);
 
@@ -1767,7 +2109,13 @@ function readNextUp() {
     .sort((a, b) => a.y - b.y)
     .map((x) => x.w.querySelector('.queueItemView'))
     .filter(Boolean);
-  const ai = rows.findIndex((r) => r.classList.contains('m-active'));
+  const cur = lastTrackInfo && lastTrackInfo.title ? lastTrackInfo.title.trim() : (document.querySelector('.playbackSoundBadge__titleLink') || {}).title || '';
+  const titleOf = (r) => { const t = r.querySelector('.queueItemView__title a'); return t ? t.textContent.trim() : ''; };
+  let ai = rows.findIndex((r) => r.classList.contains('m-active') || r.classList.contains('m-playing'));
+  if (cur && (ai < 0 || titleOf(rows[ai]) !== cur)) {
+    const byTitle = rows.map((r, i) => (titleOf(r) === cur ? i : -1)).filter((i) => i >= 0);
+    if (byTitle.length) ai = byTitle.find((i) => i >= ai) ?? byTitle[0];
+  }
   if (ai < 0) return [];
   const list = [];
   for (const r of rows.slice(ai + 1, ai + 6)) {
@@ -1790,7 +2138,7 @@ async function primeQueue() {
   const a = document.querySelector('.playbackSoundBadge__showQueue');
   const title = lastTrackInfo ? lastTrackInfo.title : '';
   if (title !== primeTitle) { primeTitle = title; primeTries = 0; }
-  if (!a || primeTries >= 3 || Date.now() - primedAt < 20000) return;
+  if (!a || primeTries >= 3 || Date.now() - primedAt < (primeTries ? 20000 : 1500)) return;
   primeTries++;
   primedAt = Date.now();
   const root = document.documentElement;
@@ -1803,11 +2151,33 @@ async function primeQueue() {
   pollTrack();
 }
 
-function playNextUp(i) {
-  const r = nextEls[i];
-  const b = r && r.querySelector('.queueItemView__playButton .sc-button-play:not(.sc-button-pause)');
-  if (b) b.click();
-  else if (i === 0) { const n = document.querySelector('.playControls__next'); if (n) n.click(); }
+async function playNextUp(i) {
+  const want = ((lastTrackInfo && lastTrackInfo.next) || [])[i];
+  const tryClick = () => {
+    const r = nextEls[i];
+    const b = r && document.contains(r) && r.querySelector('.queueItemView__playButton .sc-button-play:not(.sc-button-pause)');
+    if (b) { b.click(); return true; }
+    return false;
+  };
+  if (tryClick()) return;
+  // the queue list is not drawn right now: open it invisibly, find the song, play it
+  const a = document.querySelector('.playbackSoundBadge__showQueue');
+  if (a) {
+    document.documentElement.classList.add('ccx-q-hide');
+    a.click();
+    await sleep(450);
+    readNextUp();
+    const j = want ? nextEls.findIndex((r) => { const t = r.querySelector('.queueItemView__title a'); return t && t.textContent.trim() === want.title; }) : i;
+    const r = nextEls[j >= 0 ? j : i];
+    const b = r && r.querySelector('.queueItemView__playButton .sc-button-play');
+    if (b) b.click();
+    await sleep(150);
+    a.click();
+    await sleep(300);
+    document.documentElement.classList.remove('ccx-q-hide');
+    if (b) return;
+  }
+  if (i === 0) { const n = document.querySelector('.playControls__next'); if (n) n.click(); }
 }
 
 let nuEl = null, nuKey = '', nuFirst = '';
@@ -1866,7 +2236,7 @@ function pollTrack() {
   const tr = getTrack();
   lastTrackInfo = tr;
   isPlaying = tr.playing;
-  if (tr.title && !document.querySelector('.queue__itemsContainer .queueItemView')) primeQueue();
+  if (tr.title && (!document.querySelector('.queue__itemsContainer .queueItemView') || tr.title !== primeTitle)) primeQueue();
   renderNextUp(false);
   if (tr.art && tr.art !== artSrc) {
     artSrc = tr.art;
@@ -2409,6 +2779,7 @@ function startScene(name) {
   ensureBgEl();
   if (!sceneCv || !bgEl.contains(sceneCv)) {
     sceneCv = el('canvas', 'cc-bgl cc-scene');
+    sceneCv.style.filter = sceneFilter();
     bgEl.append(sceneCv);
     sceneCx = sceneCv.getContext('2d');
   }
@@ -3980,6 +4351,50 @@ function buildStatsTab() {
 
 // ================================================================ SCX ONLINE (profiles, who is online, followers, leaderboards)
 let appVersion = '';
+// ================================================================ UPDATES (main downloads them from GitHub; here only the banner)
+const UPD = { last: null, el: null, shown: '' };
+ipcRenderer.on('update', (_e, u) => {
+  UPD.last = u;
+  if (u.current) appVersion = u.current;
+  if (activeTab === 'Player' && panel && panel.classList.contains('cc-open')) refreshPanel();
+  const key = u.state + u.version;
+  if (u.state === 'ready' || u.state === 'available' || u.state === 'downloading') updBanner(u, key);
+});
+function updBanner(u, key) {
+  if (!document.body) return;
+  if (!UPD.el || !document.body.contains(UPD.el)) {
+    UPD.el = el('div');
+    UPD.el.id = 'cc-upd';
+    document.body.append(UPD.el);
+  }
+  if (UPD.closed === key) return;
+  UPD.el.textContent = '';
+  const tx = el('div');
+  const close = el('button', 'cc-upd-x', '✕');
+  close.addEventListener('click', () => { UPD.closed = key; UPD.el.classList.remove('cc-show'); });
+  if (u.state === 'downloading') {
+    tx.append(el('b', null, '⬇ Updating to v' + u.version), el('span', null, Math.round((u.progress || 0) * 100) + '% — keep listening, it downloads in the background'));
+    const bar = el('i', 'cc-upd-bar');
+    bar.style.setProperty('--p', Math.round((u.progress || 0) * 100) + '%');
+    UPD.el.append(tx, bar, close);
+  } else if (u.state === 'ready') {
+    tx.append(el('b', null, '✨ SoundCloudX v' + u.version + ' is ready'), el('span', null, 'Restart to install — your settings and login stay'));
+    const go = el('button', 'cc-upd-go', 'Restart now');
+    go.addEventListener('click', () => ipcRenderer.send('update', 'install'));
+    const later = el('button', 'cc-upd-later', 'Later');
+    later.addEventListener('click', () => { UPD.closed = key; UPD.el.classList.remove('cc-show'); });
+    UPD.el.append(tx, go, later);
+  } else {
+    tx.append(el('b', null, '✨ SoundCloudX v' + u.version + ' is out'), el('span', null, u.portable ? 'The portable version can\'t update itself' : 'Download it from GitHub'));
+    const go = el('button', 'cc-upd-go', 'Download');
+    go.addEventListener('click', () => ipcRenderer.send('update', 'open'));
+    UPD.el.append(tx, go, close);
+  }
+  UPD.el.classList.add('cc-show');
+}
+// check 15 s after start, then every 6 hours
+setTimeout(() => { if (S.upd.auto) ipcRenderer.send('update', 'check'); }, 15000);
+setInterval(() => { if (S.upd.auto) ipcRenderer.send('update', 'check'); }, 6 * 3600 * 1000);
 ipcRenderer.on('assets', (_e, a) => { if (a && a.version) appVersion = a.version; });
 
 const ON = {
@@ -3998,9 +4413,12 @@ function tagEl(p) {
   if (/^#[0-9a-f]{6}$/i.test(p.tag_color || '')) t.style.setProperty('--tc', p.tag_color);
   return t;
 }
+const myPrice = (base) => (ON.me && ON.me.premium ? Math.ceil(base * 0.9) : base);
+function premiumStar() { const s2 = el('i', 'cc-star', '★'); s2.title = 'SCX Premium'; return s2; }
 function nickLine(p) {
   const b = el('b', 'cc-nickline');
   b.append(el('span', null, (p && p.nick) || '?'));
+  if (p && p.premium) b.append(premiumStar());
   if (p && p.tag_text) b.append(tagEl(p));
   return b;
 }
@@ -4062,10 +4480,16 @@ const RARITY = {
 };
 const RARITY_ORDER = Object.keys(RARITY);
 const rarityOf = (d) => (d && RARITY[d.rarity] ? d.rarity : 'common');
-function giftEl(d, size) {
+const supplyOf = (g) => (g && g.item && g.item.supply) || ((SHOP.items.find((x) => x.id === (g && g.item_id)) || {}).supply) || null;
+function giftEl(d, size, info) {
   d = d || {};
   const r = rarityOf(d);
   const g = el('div', 'cc-gift cc-r-' + r);
+  if (info && (info.num || info.supply)) {
+    const t = (info.num ? '#' + Number(info.num).toLocaleString('en-US') : '') + (info.supply ? (info.num ? ' / ' : '') + Number(info.supply).toLocaleString('en-US') : '');
+    g.title = (info.name ? info.name + '  ' : '') + t + (info.supply ? '  · limited' : '');
+    g.append(el('em', 'cc-gnum', t));
+  }
   g.style.setProperty('--rc', RARITY[r][1]);
   g.style.width = g.style.height = size + 'px';
   if (safeImg(d.url)) {
@@ -4078,7 +4502,62 @@ function giftEl(d, size) {
     e.style.fontSize = Math.round(size * 0.56) + 'px';
     g.append(e);
   }
+  const vd = info && (info.vdef || variantDef(info.variant));
+  if (vd) dressVariant(g, vd, size);
   return g;
+}
+// ---- variants (Gold / Silver / Toxic / admin's own): the server only stores the colors
+function variantDef(id) {
+  if (!id) return null;
+  const it = SHOP.items.find((x) => x.id === Number(id) && x.kind === 'variant');
+  return it ? Object.assign({ id: it.id, name: it.name }, it.data || {}) : null;
+}
+const okCol = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d);
+const VFX = { shine: '✨ Shine', drip: '🟢 Drip', steam: '💨 Steam', sparkle: '✦ Sparkles', fire: '🔥 Fire', snow: '❄️ Snow', glitch: '📺 Glitch', rainbow: '🌈 Rainbow', orbit: '🪐 Orbit', pulse: '💓 Pulse' };
+function variantLook(v) {
+  const style = ['gold', 'silver', 'toxic', 'custom'].includes(v.style) ? v.style : 'custom';
+  const def = { gold: ['#ffd700', '#b8860b'], silver: ['#f1f5f9', '#94a3b8'], toxic: ['#a3ff12', '#22c55e'], custom: ['#ff5500', '#ffb347'] }[style];
+  let cols = (Array.isArray(v.colors) ? v.colors : [v.c1, v.c2]).filter((c) => /^#[0-9a-f]{6}$/i.test(c || '')).slice(0, 4);
+  if (!cols.length) cols = def;
+  let fx = Array.isArray(v.effects) ? v.effects : v.effect ? [v.effect] : null;
+  if (!fx) fx = style === 'toxic' ? ['steam', 'drip'] : ['shine'];
+  fx = fx.map((f) => (f === 'toxic' ? ['steam', 'drip'] : f)).flat().filter((f) => VFX[f]);
+  return { style, cols, fx: [...new Set(fx)], color: v.color !== false };
+}
+function dressVariant(g, v, size) {
+  const L = variantLook(v);
+  const c1 = L.cols[0], c2 = L.cols[1] || L.cols[0];
+  g.classList.add('cc-var', 'cc-var-' + L.style);
+  if (!L.color) g.classList.add('cc-var-nocolor');
+  g.style.setProperty('--v1', c1);
+  g.style.setProperty('--v2', c2);
+  g.style.setProperty('--vgrad', 'linear-gradient(135deg,' + (L.cols.length > 1 ? L.cols.join(',') : c1 + ',' + c1) + ')');
+  if (L.color) g.append(el('i', 'cc-vfilm'), el('i', 'cc-vring'));
+  const small = size < 30;
+  const add = (cls, n, pos) => { for (let i = 0; i < n; i++) { const b = el('i', cls); if (pos) pos(b, i); g.append(b); } };
+  for (const f of L.fx) {
+    if (f === 'shine') g.classList.add('cc-var-shine');
+    else if (f === 'rainbow') g.classList.add('cc-fx-rainbow');
+    else if (f === 'glitch') g.classList.add('cc-fx-glitch');
+    else if (f === 'pulse') g.classList.add('cc-fx-pulse');
+    else if (small) continue;
+    else if (f === 'drip') { g.append(el('i', 'cc-vtop')); add('cc-vdrop', 3, (b, i) => { b.style.left = [22, 52, 76][i] + '%'; b.style.animationDelay = i * 0.7 + 's'; }); }
+    else if (f === 'steam') add('cc-vsteam', 4, (b, i) => { b.style.left = 18 + i * 20 + '%'; b.style.animationDelay = i * 0.45 + 's'; });
+    else if (f === 'sparkle') add('cc-vspark', 3, (b, i) => { b.textContent = '✦'; b.style.left = [14, 70, 44][i] + '%'; b.style.top = [16, 22, 70][i] + '%'; b.style.animationDelay = i * 0.5 + 's'; });
+    else if (f === 'fire') add('cc-vflame', 3, (b, i) => { b.style.left = [20, 42, 64][i] + '%'; b.style.animationDelay = i * 0.17 + 's'; b.style.height = [34, 46, 30][i] + '%'; });
+    else if (f === 'snow') add('cc-vsnow', 6, (b, i) => { b.style.left = 8 + i * 16 + '%'; b.style.animationDelay = i * 0.55 + 's'; b.style.animationDuration = 2.4 + (i % 3) * 0.6 + 's'; });
+    else if (f === 'orbit') { const o = el('i', 'cc-vorbit'); o.append(el('i'), el('i')); g.append(o); }
+  }
+  g.title = (g.title ? g.title + '  ' : '') + '· ' + (v.name || 'Variant');
+}
+function variantChip(id) {
+  const v = typeof id === 'object' ? id : variantDef(id);
+  if (!v) return null;
+  const c = el('span', 'cc-vchip', v.name || 'Variant');
+  const L = variantLook(v);
+  c.style.setProperty('--v1', L.cols[0]);
+  c.style.setProperty('--v2', L.cols[1] || L.cols[0]);
+  return c;
 }
 function packEl(d, size) {
   d = d || {};
@@ -4111,28 +4590,38 @@ function oddsEl(d) {
 }
 
 // open a pack: 🎁 shakes → flash → the gift pops out (≤ 2 s)
+let lastPackOpen = 0;
 async function openPack(gift) {
+  const wait = Math.ceil((lastPackOpen + 10000 - Date.now()) / 1000);
+  if (wait > 0) { toast('⏳ Wait ' + wait + ' s before the next pack'); return null; }
+  lastPackOpen = Date.now();
+  return revealGift(packEl(gift.data, 110), () => onlineCall('openPack', { gift: gift.id }));
+}
+// box shakes → flash → the gift pops out (≤ 2 s)
+async function revealGift(box, get) {
   const wrap = el('div', 'cc-popen');
   const stage = el('div', 'cc-pstage');
-  const box = packEl(gift.data, 110);
   box.classList.add('cc-pshake');
   stage.append(box);
   const out = el('div', 'cc-pout');
   wrap.append(stage, out);
-  togglePanel(true);
-  panel.append(wrap);
+  dlgHost().append(wrap);
   const t0 = performance.now();
   let res;
-  try { res = await onlineCall('openPack', { gift: gift.id }); } catch (e) { wrap.remove(); toast(e.message); return null; }
+  try { res = await get(); } catch (e) { wrap.remove(); toast(e.message); return null; }
   await sleep(Math.max(0, 850 - (performance.now() - t0)));
   const r = rarityOf(res.data);
   wrap.style.setProperty('--rc', RARITY[r][1]);
   wrap.classList.add('cc-pflash', 'cc-r-' + r);
   box.remove();
-  const g = giftEl(res.data, 120);
+  const g = giftEl(res.data, 120, { variant: res.variant });
   g.classList.add('cc-ppop');
+  const sup = (SHOP.items.find((x) => x.id === res.item) || {}).supply;
   stage.append(el('i', 'cc-prays'), g);
-  out.append(el('b', null, res.name), rarityChip(res.data), el('small', null, res.num ? '#' + res.num : ''));
+  const vc = res.variant && variantChip(res.variant);
+  out.append(el('b', null, res.name), rarityChip(res.data));
+  if (vc) { out.append(vc); wrap.classList.add('cc-pvar'); }
+  out.append(el('small', null, res.num ? '#' + res.num + (sup ? ' of ' + sup.toLocaleString('en-US') : '') : ''));
   setTimeout(() => {
     out.classList.add('cc-show');
     const close = () => { wrap.classList.add('cc-pgone'); setTimeout(() => wrap.remove(), 200); };
@@ -4147,10 +4636,10 @@ async function openPack(gift) {
 }
 // buy a pack for yourself and open it right away
 async function buyAndOpen(it, btn) {
-  if (coinBalance() < it.price) return toast('Not enough coins yet');
+  if (coinBalance() < myPrice(it.price)) return toast('Not enough coins yet');
   if (SHOP.armedId !== it.id || Date.now() - SHOP.armed > 4000) {
     SHOP.armedId = it.id; SHOP.armed = Date.now();
-    btn.textContent = 'Open for 🪙 ' + it.price.toLocaleString('en-US') + '?';
+    btn.textContent = 'Open for 🪙 ' + myPrice(it.price).toLocaleString('en-US') + '?';
     btn.classList.add('cc-armed');
     return;
   }
@@ -4163,7 +4652,7 @@ async function buyAndOpen(it, btn) {
     const mine = (await onlineCall('myGifts')) || [];
     const pk = mine.find((g) => g.kind === 'pack' && g.item_id === it.id);
     renderShop();
-    if (pk) await openPack(pk);
+    if (pk) { const w = Math.ceil((lastPackOpen + 10000 - Date.now()) / 1000); if (w > 0) { toast('Bought! ⏳ Opening in ' + w + ' s…'); await sleep(w * 1000 + 100); } await openPack(pk); }
   } catch (e) { toast(e.message); renderShop(); }
 }
 
@@ -4178,7 +4667,7 @@ function pinnedGiftsEl(list, size) {
   (list || []).slice(0, 3).forEach((g) => {
     const w = el('div', 'cc-pgift');
     w.title = g.name + (g.num ? ' #' + g.num : '') + (g.from && g.from.nick ? ' — from ' + g.from.nick : '');
-    w.append(giftEl(g.data, size));
+    w.append(giftEl(g.data, size, { num: g.num, supply: supplyOf(g), name: g.name, variant: g.variant }));
     row.append(w);
   });
   return row;
@@ -4233,6 +4722,11 @@ async function startOnline() {
     ON.me = r.profile;
     ON.ready = true;
     ON.err = '';
+    applyUserCss();
+    applyCSS();
+    applyMulti();
+    loadConfig();
+    if (r.profile) setTimeout(() => loadShop(), 1500);
     if (ON.me) { COINS.raiseTo(ON.me.coins); COINS.ping(); onlineHeartbeat(); onlineSync(); loadCounts(); setTimeout(checkMessages, 3000); }
     refreshPanel();
   } catch (e) {
@@ -4356,9 +4850,120 @@ function joinForm(box, editing) {
   box.append(sectionTitle(editing ? 'Edit profile' : 'Join SCX Online'));
   if (!editing) box.append(note('See who listens with SCX right now, follow people and compete for coins and SCX Beat scores.'));
   box.append(nick, el('div', 'cc-gap'), link, avRow, msg, save);
-  if (editing) box.append(wideBtn('Cancel', () => { ON.editing = false; renderOnline(); }, 'cc-ghost'));
+  if (editing) {
+    box.append(wideBtn('Cancel', () => { ON.editing = false; renderOnline(); }, 'cc-ghost'));
+    const style = el('div', 'cc-mystyle');
+    box.append(sectionTitle('✨ My style'), style, note('Everything you own — also things that are not in the Shop anymore.'));
+    renderMyStyle(style);
+  }
   else box.append(note('Only your nick, picture, what you play, coins and stats are shared. No e-mail, no password.'),
     wideBtn('🔑 I have a recovery code', () => { ON.restoring = true; renderOnline(); }, 'cc-ghost'));
+}
+
+// ================================================================ TICKETS IN SONGS 🎫
+// hash(song + UTC date + ticket) < chance %  → this song has the ticket today. The server checks the same thing.
+const TK = { cache: new Map(), claimed: new Set(), day: '' };
+try { (JSON.parse(localStorage.getItem('ccx_tk_claimed') || '[]') || []).forEach((k) => TK.claimed.add(k)); } catch {}
+const tkDay = () => new Date().toISOString().slice(0, 10);
+async function tkRoll(url, id) {
+  const key = url + ':' + tkDay() + ':' + id;
+  if (TK.cache.has(key)) return TK.cache.get(key);
+  const p = crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)).then((h) => (new DataView(h).getUint32(0) / 4294967296) * 100);
+  TK.cache.set(key, p);
+  if (TK.cache.size > 4000) TK.cache.clear();
+  return p;
+}
+function songUrlOf(href) {
+  const m = /^(?:https:\/\/soundcloud\.com)?\/([a-z0-9_-]{1,60})\/([a-z0-9_-]{1,120})\/?(?:[?#].*)?$/i.exec(href || '');
+  if (!m || RESERVED.has(m[1].toLowerCase()) || ['sets', 'likes', 'tracks', 'reposts', 'albums', 'followers', 'following', 'popular-tracks', 'comments', 'recommended'].includes(m[2].toLowerCase())) return '';
+  return ('https://soundcloud.com/' + m[1] + '/' + m[2]).toLowerCase();
+}
+const ticketDefs = () => SHOP.items.filter((x) => x.kind === 'ticket' && x.active !== false && Number(x.data && x.data.chance) > 0);
+async function ticketsIn(url) {
+  const out = [];
+  for (const t of ticketDefs()) if ((await tkRoll(url, t.id)) < Number(t.data.chance)) out.push(t);
+  return out;
+}
+async function scanTickets() {
+  document.documentElement && document.documentElement.classList.toggle('ccx-tk-still', !S.tk.anim);
+  if (!S.tk.show) { document.querySelectorAll('.ccx-ticket').forEach((e) => e.remove()); document.querySelectorAll('[data-ccx-tk]').forEach((a) => { delete a.dataset.ccxTk; }); return; }
+  if (!ON.me || !ticketDefs().length) return;
+  const links = document.querySelectorAll('a.soundTitle__title, a.trackItem__trackTitle, a.soundBadge__title, .queueItemView__title a, a.playbackSoundBadge__titleLink, a.compactTrackListItem__trackTitle, a.systemPlaylistTrackList__title, .trackList__item a.trackItem__trackTitle');
+  for (const a of links) {
+    if (a.dataset.ccxTk === tkDay()) continue;
+    a.dataset.ccxTk = tkDay();
+    const url = songUrlOf(a.getAttribute('href'));
+    if (!url) continue;
+    const found = await ticketsIn(url);
+    if (!found.length) continue;
+    const b = el('span', 'ccx-ticket');
+    found.slice(0, 2).forEach((t) => {
+      const d = t.data || {};
+      if (safeImg(d.url)) { const i = el('img'); i.src = d.url; i.alt = ''; b.append(i); } else b.append(document.createTextNode(String(d.emoji || '🎫').slice(0, 8)));
+    });
+    b.title = found.map((t) => t.name).join(', ') + ' hidden in this song — listen 20 s to take it (max 3 a day)';
+    a.after(b);
+  }
+}
+setInterval(() => { scanTickets().catch(() => {}); }, 2500);
+// listening ≥ 20 s to a song with a ticket → take it
+let tkBusy = false;
+setInterval(async () => {
+  const tr = lastTrackInfo || {};
+  if (tkBusy || !ON.me || !tr.url || !tr.playing || songNow() < 20) return;
+  const url = songUrlOf(tr.url);
+  if (!url) return;
+  const found = await ticketsIn(url).catch(() => []);
+  for (const t of found) {
+    const key = tkDay() + '|' + url + '|' + t.id;
+    if (TK.claimed.has(key)) continue;
+    TK.claimed.add(key);
+    try { localStorage.setItem('ccx_tk_claimed', JSON.stringify([...TK.claimed].filter((k) => k.startsWith(tkDay())))); } catch {}
+    tkBusy = true;
+    try {
+      const r = await onlineCall('claimTicket', { url, ticket: t.id });
+      toast('🎫 You found ' + r.name + '! (' + ticketText(r.data) + ')');
+      if (S.tk.anim) giftBurst();
+      MYG.list = null;
+    } catch (e) { if (!/already|Max 3|No ticket/.test(e.message)) toast(e.message); else if (/Max 3/.test(e.message)) toast('🎫 ' + e.message + ' — come back tomorrow'); }
+    tkBusy = false;
+  }
+}, 3000);
+
+// ---- tags / frames / profile backgrounds you own → wear them here
+async function renderMyStyle(box) {
+  box.textContent = '';
+  box.append(note('Loading…'));
+  let items;
+  try { items = (await onlineCall('myItems')) || []; } catch (e) { box.textContent = ''; box.append(el('div', 'cc-status', e.message)); return; }
+  box.textContent = '';
+  const me = ON.me || {};
+  const group = (title, list, isOn, mk, wear) => {
+    box.append(el('small', 'cc-gstep', title));
+    const row = el('div', 'cc-stylerow');
+    const none = el('button', 'cc-styleitem' + (list.every((it) => !isOn(it)) ? ' cc-on' : ''), 'None');
+    none.addEventListener('click', () => wear(null));
+    row.append(none);
+    list.forEach((it) => {
+      const b = el('button', 'cc-styleitem' + (isOn(it) ? ' cc-on' : ''));
+      b.append(mk(it));
+      b.title = it.name + (it.active === false ? ' (not in the Shop anymore)' : '');
+      b.addEventListener('click', () => wear(it));
+      row.append(b);
+    });
+    if (!list.length) row.append(el('span', 'cc-gstep', 'nothing yet'));
+    box.append(row);
+  };
+  const run = async (op, item) => {
+    try { await onlineCall(op, { item: item ? item.id : null }); await refreshMe(); badgeCache.clear(); toast('✓ Saved'); } catch (e) { toast(e.message); }
+    renderMyStyle(box);
+  };
+  group('🏷️ Tag', items.filter((x) => x.kind === 'tag'), (it) => me.tag_text && me.tag_text === ((it.data && it.data.text) || it.name),
+    (it) => tagEl({ tag_text: (it.data && it.data.text) || it.name, tag_color: it.data && it.data.color }), (it) => run('equip', it));
+  group('⭕ Frame', items.filter((x) => x.kind === 'frame'), (it) => me.frame && me.frame.name === it.name,
+    (it) => avatarEl({ nick: me.nick, avatar: me.avatar, frame: it.data }, 34), (it) => run('equipFrame', it));
+  group('🖼️ Profile background', items.filter((x) => (x.kind === 'image' || x.kind === 'gif') && x.data && safeImg(x.data.url)), (it) => me.profile_bg === it.data.url,
+    (it) => { const i = el('i', 'cc-stylebg'); i.style.backgroundImage = cssUrl(it.data.url); return i; }, (it) => run('equipBg', it));
 }
 
 // ---- recovery code: get the same profile back on another PC
@@ -4459,10 +5064,16 @@ function renderProfileView(box) {
     r2.append(fb, gb);
     box.append(r2);
   } else {
-    box.append(sectionTitle('🎁 My gifts'));
+    let folded = false;
+    try { folded = localStorage.getItem('ccx_gifts_folded') === '1'; } catch {}
+    const head = el('button', 'cc-foldhead', (folded ? '▸ ' : '▾ ') + '🎁 My gifts');
     const gbox = el('div', 'cc-mygifts');
-    box.append(gbox, note('📌 Pin up to 3 gifts — everybody sees them on your profile (in SCX and on your SoundCloud page).'));
-    renderMyGifts(gbox);
+    const hint = note('📌 Pin up to 3 gifts — everybody sees them on your profile (in SCX and on your SoundCloud page).');
+    const paintFold = () => { head.textContent = (folded ? '▸ ' : '▾ ') + '🎁 My gifts' + (folded && MYG.list ? '  ·  ' + MYG.list.length : ''); gbox.style.display = hint.style.display = folded ? 'none' : ''; };
+    head.addEventListener('click', () => { folded = !folded; try { localStorage.setItem('ccx_gifts_folded', folded ? '1' : '0'); } catch {} paintFold(); if (!folded) renderMyGifts(gbox); });
+    box.append(head, gbox, hint);
+    paintFold();
+    if (!folded) renderMyGifts(gbox);
   }
 
   if (v.presence && v.presence.title) {
@@ -4500,7 +5111,147 @@ function renderProfileView(box) {
   box.append(bg);
 }
 
-const MYG = { list: null, at: 0 };
+const MYG = { list: null, at: 0, boost: undefined };
+function ticketEl(d, size) {
+  d = d || {};
+  const v = variantDef(d.variant);
+  const t = el('div', 'cc-ticket');
+  t.style.width = t.style.height = size + 'px';
+  if (v) { const L = variantLook(v); t.style.setProperty('--v1', L.cols[0]); t.style.setProperty('--v2', L.cols[1] || L.cols[0]); }
+  if (safeImg(d.url)) { const i = el('img'); i.src = d.url; i.alt = ''; t.append(i); }
+  else { const e = el('span', null, String(d.emoji || '🎫').slice(0, 8)); e.style.fontSize = Math.round(size * 0.55) + 'px'; t.append(e); }
+  return t;
+}
+function ticketText(d) {
+  const v = variantDef(d && d.variant);
+  return '+' + (Number(d && d.bonus) || 0) + '% ' + (v ? v.name : 'variant');
+}
+function boostLine(b) {
+  const v = variantDef(b.variant);
+  const w = el('div', 'cc-boost');
+  w.append(el('b', null, '🎫 Active: ' + (v ? v.name : 'variant') + ' +' + Number(b.bonus) + '%'), el('span', null, 'used on your next craft or pack'));
+  return w;
+}
+
+// ---- craft: 3 gifts of the same rarity → 1 random gift of the next rarity (can come out as a variant)
+function craftDialog() {
+  const list = (MYG.list || []).filter((g) => g.kind === 'gift' && !g.listing);
+  const pick = [];
+  const wrap = el('div', 'cc-gdlg');
+  const card = el('div', 'cc-gcard');
+  wrap.append(card);
+  wrap.addEventListener('mousedown', (e) => { if (e.target === wrap) wrap.remove(); });
+  dlgHost().append(wrap);
+  const paint = () => {
+    card.textContent = '';
+    const head = el('div', 'cc-ghead');
+    const x = el('button', 'cc-gx', '✕');
+    x.addEventListener('click', () => wrap.remove());
+    head.append(el('b', null, '⚒️ Craft'), x);
+    card.append(head);
+    const rar = pick.length ? rarityOf(pick[0].data) : null;
+    const nxt = rar ? RARITY_ORDER[RARITY_ORDER.indexOf(rar) + 1] : null;
+    const slots = el('div', 'cc-craftslots');
+    for (let i = 0; i < 3; i++) {
+      const s2 = el('div', 'cc-craftslot');
+      if (pick[i]) s2.append(giftEl(pick[i].data, 44, { variant: pick[i].variant }));
+      else s2.append(el('span', null, '+'));
+      slots.append(s2);
+    }
+    slots.append(el('b', 'cc-craftarrow', '→'));
+    const res = el('div', 'cc-craftslot cc-craftres');
+    res.append(el('span', null, nxt ? '?' : '🎁'));
+    if (nxt) res.style.setProperty('--rc', RARITY[nxt][1]);
+    slots.append(res);
+    card.append(slots, el('small', 'cc-gstep', rar ? '3 × ' + RARITY[rar][0] + ' → 1 random ' + (nxt ? RARITY[nxt][0] : '—') + ' (it can come out as a variant)' : 'Pick 3 gifts of the same rarity. You get 1 random gift of the next rarity.'));
+    if (MYG.boost) card.append(boostLine(MYG.boost));
+    const grid = el('div', 'cc-gitems');
+    const can = list.filter((g) => !rar || rarityOf(g.data) === rar).filter((g) => rarityOf(g.data) !== 'divine');
+    if (!can.length) grid.append(note('You have no gifts to craft.'));
+    can.forEach((g) => {
+      const b = el('button', 'cc-gitem' + (pick.includes(g) ? ' cc-on' : ''));
+      b.style.setProperty('--rc', RARITY[rarityOf(g.data)][1]);
+      b.append(giftEl(g.data, 36, { variant: g.variant }), el('small', null, g.num ? '#' + g.num : g.name));
+      b.title = g.name + (g.pinned ? ' (pinned)' : '');
+      b.addEventListener('click', () => { const i = pick.indexOf(g); if (i >= 0) pick.splice(i, 1); else if (pick.length < 3) pick.push(g); paint(); });
+      grid.append(b);
+    });
+    card.append(grid);
+    const status = el('div', 'cc-status');
+    let armed = 0;
+    const go = wideBtn(pick.length === 3 ? '⚒️ Craft (the 3 gifts are used)' : 'Pick ' + (3 - pick.length) + ' more', async () => {
+      if (pick.length !== 3) return;
+      if (Date.now() - armed > 4000) { armed = Date.now(); go.textContent = 'Sure? The 3 gifts are gone'; go.classList.add('cc-armed'); return; }
+      wrap.remove();
+      const r = await revealGift(el('div', 'cc-gift cc-pack cc-anvil', '⚒️'), () => onlineCall('craft', { ids: pick.map((g) => g.id) }));
+      if (r) { MYG.boost = null; }
+    });
+    card.append(status, go);
+  };
+  paint();
+}
+
+function sellBtn(g) {
+  const b = el('button', 'cc-sbtn cc-ghostbtn', '💰');
+  b.title = 'Sell on the market';
+  b.addEventListener('click', () => sellDialog(g));
+  return b;
+}
+function listedBtn(g) {
+  const b = el('button', 'cc-sbtn cc-ghostbtn cc-listed', '🏪 ' + fmtShort(g.listing.price));
+  b.title = 'On the market — click to take it off';
+  b.addEventListener('click', async () => {
+    b.textContent = '…';
+    try { await onlineCall('marketCancel', { listing: g.listing.id }); g.listing = null; toast('Taken off the market'); } catch (e) { toast(e.message); }
+    MYG.list = null;
+    afterGiftChange();
+  });
+  return b;
+}
+const fmtShort = (n) => (n >= 1e6 ? +(n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? +(n / 1e3).toFixed(1) + 'k' : Number(n).toLocaleString('en-US'));
+function afterGiftChange() {
+  if (ON.view && ON.view.isMe) openProfile(ON.uid);
+  if (STORE.open) renderStore();
+}
+function sellDialog(g) {
+  const wrap = el('div', 'cc-gdlg');
+  const card = el('div', 'cc-gcard');
+  wrap.append(card);
+  const close = () => wrap.remove();
+  wrap.addEventListener('mousedown', (e) => { if (e.target === wrap) close(); });
+  const head = el('div', 'cc-ghead');
+  const x = el('button', 'cc-gx', '✕');
+  x.addEventListener('click', close);
+  head.append(el('b', null, '💰 Sell on the market'), x);
+  const sel = el('div', 'cc-gsel');
+  sel.append(g.kind === 'pack' ? packEl(g.data, 64) : g.kind === 'ticket' ? ticketEl(g.data, 64) : giftEl(g.data, 64, { variant: g.variant }));
+  const tx = el('div');
+  tx.append(el('b', null, g.name + (g.num ? ' #' + g.num : '')));
+  if (g.variant && variantChip(g.variant)) tx.append(variantChip(g.variant));
+  if (g.kind === 'gift') tx.append(rarityChip(g.data));
+  sel.append(tx);
+  const price = el('input', 'cc-text');
+  price.inputMode = 'numeric';
+  price.placeholder = 'Price in coins';
+  const status = el('div', 'cc-status');
+  const go = wideBtn('Put on the market', async () => {
+    const v = Math.floor(Number(price.value.replace(/\D/g, '')) || 0);
+    if (v < 1) { status.textContent = 'Write a price'; return; }
+    go.textContent = '…';
+    try {
+      await onlineCall('marketList', { gift: g.id, price: v });
+      toast('🏪 On the market for 🪙 ' + v.toLocaleString('en-US'));
+      close();
+      MYG.list = null;
+      STORE.market = null;
+      afterGiftChange();
+    } catch (e) { status.textContent = e.message; go.textContent = 'Put on the market'; }
+  });
+  card.append(head, sel, el('small', 'cc-gstep', 'Price'), price, note('Max 10 things on the market at once. When somebody buys it, the coins are yours. You can take it off any time.'), status, go);
+  dlgHost().append(wrap);
+  setTimeout(() => price.focus());
+}
+
 async function renderMyGifts(box, force) {
   if (!MYG.list || force || Date.now() - MYG.at > 30000) {
     box.textContent = '';
@@ -4509,7 +5260,15 @@ async function renderMyGifts(box, force) {
   }
   box.textContent = '';
   const list = MYG.list;
+  const held = list.filter((g) => g.kind === 'gift' || g.kind === 'pack').length;
+  const cap = ON.me && ON.me.premium ? 100 : 50;
+  box.append(el('div', 'cc-gcount' + (held >= cap ? ' cc-full' : ''), '🎁 ' + held + ' / ' + cap + (ON.me && ON.me.premium ? '  ⭐' : '  ·  Premium: 100')));
   if (!list.length) { box.append(note('No gifts yet. Friends can send you gifts from your profile or the Shop.')); return; }
+  const tools = el('div', 'cc-btnrow');
+  tools.append(wideBtn('⚒️ Craft', () => craftDialog(), 'cc-ghost'), wideBtn('🎫 Tickets: ' + list.filter((g) => g.kind === 'ticket').length, () => { const t = box.querySelector('.cc-tickets'); if (t) t.scrollIntoView({ behavior: 'smooth' }); else toast('No tickets yet — they hide in songs 🎵'); }, 'cc-ghost'));
+  box.append(tools);
+  if (MYG.boost === undefined) { MYG.boost = null; onlineCall('myBoost').then((b) => { MYG.boost = b; if (b) renderMyGifts(box); }).catch(() => {}); }
+  if (MYG.boost) box.append(boostLine(MYG.boost));
   const packs = list.filter((g) => g.kind === 'pack');
   if (packs.length) {
     const grid = el('div', 'cc-giftgrid');
@@ -4518,12 +5277,15 @@ async function renderMyGifts(box, force) {
       c.append(packEl(g.data, 46), el('b', null, g.name), el('small', null, g.from && g.from.nick ? 'from ' + g.from.nick : 'bought'));
       if (g.note) c.title = '"' + g.note + '"';
       const btns = el('div', 'cc-cellbtns');
-      const op = el('button', 'cc-sbtn', 'Open');
-      op.addEventListener('click', () => openPack(g));
-      const pass = el('button', 'cc-sbtn cc-ghostbtn', '🎁');
-      pass.title = 'Give it to someone';
-      pass.addEventListener('click', () => giftDialog({ transfer: g }));
-      btns.append(op, pass);
+      if (g.listing) btns.append(listedBtn(g));
+      else {
+        const op = el('button', 'cc-sbtn', 'Open');
+        op.addEventListener('click', () => openPack(g));
+        const pass = el('button', 'cc-sbtn cc-ghostbtn', '🎁');
+        pass.title = 'Give it to someone';
+        pass.addEventListener('click', () => giftDialog({ transfer: g }));
+        btns.append(op, pass, sellBtn(g));
+      }
       c.append(btns);
       grid.append(c);
     }
@@ -4535,7 +5297,9 @@ async function renderMyGifts(box, force) {
     for (const g of gifts) {
       const c = el('div', 'cc-giftcell' + (g.pinned ? ' cc-pinned' : ''));
       c.style.setProperty('--rc', RARITY[rarityOf(g.data)][1]);
-      c.append(giftEl(g.data, 46), el('b', null, g.name), el('small', null, (g.num ? '#' + g.num + ' · ' : '') + (g.from && g.from.nick ? 'from ' + g.from.nick : 'bought')));
+      c.append(giftEl(g.data, 46, { num: g.num, supply: supplyOf(g), name: g.name, variant: g.variant }), el('b', null, g.name));
+      if (g.variant && variantChip(g.variant)) c.append(variantChip(g.variant));
+      c.append(el('small', null, (g.num ? '#' + g.num + ' · ' : '') + (g.from && g.from.nick ? 'from ' + g.from.nick : 'bought')));
       if (g.note) c.title = '"' + g.note + '"';
       const pin = el('button', 'cc-sbtn' + (g.pinned ? ' cc-ghostbtn' : ''), g.pinned ? 'Unpin' : '📌 Pin');
       pin.addEventListener('click', async () => {
@@ -4554,13 +5318,41 @@ async function renderMyGifts(box, force) {
       pass.title = 'Give it to someone (it keeps its number)';
       pass.addEventListener('click', () => giftDialog({ transfer: g }));
       const btns = el('div', 'cc-cellbtns');
-      btns.append(pin, pass);
+      if (g.listing) btns.append(listedBtn(g));
+      else btns.append(pin, pass, sellBtn(g));
       c.append(btns);
       grid.append(c);
     }
     box.append(grid);
   }
-  const other = list.filter((g) => g.kind !== 'gift' && g.kind !== 'pack');
+  const tickets = list.filter((g) => g.kind === 'ticket');
+  if (tickets.length) {
+    box.append(el('small', 'cc-gstep cc-tickets', '🎫 Tickets — activate one before a craft or a pack: more chance for its variant'));
+    const grid = el('div', 'cc-giftgrid');
+    for (const g of tickets) {
+      const c = el('div', 'cc-giftcell cc-ticketcell');
+      c.append(ticketEl(g.data, 42), el('b', null, g.name), el('small', null, ticketText(g.data)));
+      const btns = el('div', 'cc-cellbtns');
+      if (g.listing) btns.append(listedBtn(g));
+      else {
+        const act = el('button', 'cc-sbtn', 'Use');
+        act.title = 'Activate: works on your next craft or pack';
+        act.addEventListener('click', async () => {
+          act.textContent = '…';
+          try { const r = await onlineCall('activateTicket', { gift: g.id }); MYG.boost = { variant: r.variant, bonus: r.bonus }; toast('🎫 ' + r.name + ' +' + r.bonus + '% — on your next craft or pack'); } catch (e) { toast(e.message); }
+          MYG.list = null;
+          afterGiftChange();
+        });
+        const pass = el('button', 'cc-sbtn cc-ghostbtn', '🎁');
+        pass.addEventListener('click', () => giftDialog({ transfer: g }));
+        btns.append(act, pass, sellBtn(g));
+      }
+      c.append(btns);
+      grid.append(c);
+    }
+    box.append(grid);
+  }
+  const other = list.filter((g) => g.kind !== 'gift' && g.kind !== 'pack' && g.kind !== 'ticket');
   for (const g of other.slice(0, 20)) {
     const r = el('div', 'cc-giftline');
     r.append(el('span', null, (g.kind === 'coins' ? '🪙 ' + Number(g.amount || 0).toLocaleString('en-US') + ' coins' : (g.kind === 'tag' ? '🏷️ ' : '⭕ ') + g.name)),
@@ -4574,14 +5366,13 @@ const GD = { el: null };
 function giftDialog(opts) {
   if (!ON.me) return toast('Join SCX Online first (Online tab)');
   const tr = opts.transfer || null;
-  const st = { to: opts.to || null, item: opts.item || null, coins: opts.coins || 0, tab: opts.item ? opts.item.kind : 'gift', q: '', res: [], note: '' };
+  const st = { anon: false, dm: true, to: opts.to || null, item: opts.item || null, coins: opts.coins || 0, tab: opts.item ? opts.item.kind : 'gift', q: '', res: [], note: '' };
   if (GD.el) GD.el.remove();
   const wrap = el('div', 'cc-gdlg');
   const card = el('div', 'cc-gcard');
   wrap.append(card);
   wrap.addEventListener('mousedown', (e) => { if (e.target === wrap) close(); });
-  togglePanel(true);
-  panel.append(wrap); // inside the menu, so it uses the menu's look
+  dlgHost().append(wrap); // inside the menu / shop window, so it uses their look
   GD.el = wrap;
   function close() { wrap.remove(); if (GD.el === wrap) GD.el = null; }
   if (!ON.following.length) onlineCall('following').then((r) => { if (Array.isArray(r) && r.length) { ON.following = r; if (!st.to && !st.q) paint(); } }).catch(() => {});
@@ -4633,7 +5424,7 @@ function giftDialog(opts) {
     const self = st.to.id === ON.uid;
     if (tr) {
       const sel = el('div', 'cc-gsel');
-      sel.append(tr.kind === 'pack' ? packEl(tr.data, 64) : giftEl(tr.data, 64));
+      sel.append(tr.kind === 'pack' ? packEl(tr.data, 64) : tr.kind === 'ticket' ? ticketEl(tr.data, 64) : giftEl(tr.data, 64, { variant: tr.variant }));
       const tx = el('div');
       tx.append(el('b', null, tr.name + (tr.num ? ' #' + tr.num : '')));
       if (tr.kind === 'gift') tx.append(rarityChip(tr.data));
@@ -4667,7 +5458,7 @@ function giftDialog(opts) {
           else if (it.kind === 'gift') { b.append(giftEl(d, 40)); b.style.setProperty('--rc', RARITY[rarityOf(d)][1]); }
           else if (it.kind === 'tag') b.append(tagEl({ tag_text: d.text || it.name, tag_color: d.color }));
           else b.append(avatarEl({ nick: st.to.nick, avatar: st.to.avatar, frame: d }, 32));
-          b.append(el('small', null, '🪙 ' + it.price.toLocaleString('en-US')));
+          b.append(el('small', null, '🪙 ' + myPrice(it.price).toLocaleString('en-US')));
           b.title = it.name;
           b.addEventListener('click', () => { st.item = it; paint(); });
           grid.append(b);
@@ -4697,9 +5488,9 @@ function giftDialog(opts) {
     msg.value = st.note;
     msg.addEventListener('input', () => { st.note = msg.value; });
     const status = el('div', 'cc-status');
-    const price = () => (tr ? 0 : st.tab === 'coins' && !opts.item ? st.coins : st.item ? st.item.price : 0);
+    const price = () => (tr ? 0 : st.tab === 'coins' && !opts.item ? st.coins : st.item ? myPrice(st.item.price) : 0);
     const sendLabel = () => (tr ? 'Give to ' + (st.to.nick || '?') : st.tab === 'coins' && !opts.item ? (st.coins ? 'Send 🪙 ' + st.coins.toLocaleString('en-US') : 'Send coins')
-      : st.item ? (self ? 'Buy' : 'Send') + ' for 🪙 ' + st.item.price.toLocaleString('en-US') : 'Pick something');
+      : st.item ? (self ? 'Buy' : 'Send') + ' for 🪙 ' + myPrice(st.item.price).toLocaleString('en-US') : 'Pick something');
     let armed = 0;
     const sendB = wideBtn(sendLabel(), async () => {
       const coinsMode = st.tab === 'coins' && !opts.item && !tr;
@@ -4709,9 +5500,22 @@ function giftDialog(opts) {
       sendB.textContent = '…';
       await onlineSync();
       try {
-        if (tr) await onlineCall('transferGift', { id: st.to.id, gift: tr.id, note: st.note });
-        else if (coinsMode) await onlineCall('sendCoins', { id: st.to.id, amount: st.coins, note: st.note });
-        else await onlineCall('gift', { id: st.to.id, item: st.item.id, note: st.note });
+        let code = '';
+        const anon = !self && st.anon;
+        if (tr) {
+          await onlineCall('transferGift', { id: st.to.id, gift: tr.id, note: st.note, anon });
+          code = scxCode(tr.kind, tr.item_id, tr.num, tr.variant);
+        } else if (coinsMode) {
+          await onlineCall('sendCoins', { id: st.to.id, amount: st.coins, note: st.note, anon });
+          code = 'SCX:coins:' + st.coins;
+        } else {
+          const r = await onlineCall('gift', { id: st.to.id, item: st.item.id, note: st.note, anon });
+          code = scxCode(st.item.kind, st.item.id, r && r.num, null);
+        }
+        if (!self && !anon && st.dm && st.to.sc_url && code) {
+          const what = tr ? tr.name : coinsMode ? st.coins.toLocaleString('en-US') + ' coins' : st.item.name;
+          setTimeout(() => sendScDm(st.to.sc_url, '🎁 ' + what + ' for you in SoundCloudX — ' + code + (st.note ? '\n' + st.note : '')), 600);
+        }
         await refreshMe();
         MYG.list = null;
         badgeCache.clear();
@@ -4722,10 +5526,121 @@ function giftDialog(opts) {
         if (ON.view) openProfile(ON.view.id);
       } catch (e) { status.textContent = e.message; sendB.textContent = sendLabel(); sendB.classList.remove('cc-armed'); }
     });
+    if (!self) {
+      const opt = el('div', 'cc-sendopts');
+      const sw = (label, get, set, hint) => {
+        const b = el('button', 'cc-chk' + (get() ? ' cc-on' : ''));
+        b.append(el('i'), el('span', null, label));
+        if (hint) b.title = hint;
+        b.addEventListener('click', () => { set(!get()); paint(); });
+        return b;
+      };
+      opt.append(sw('🕵️ Anonymous', () => st.anon, (v) => { st.anon = v; }, 'They will not see who sent it'));
+      if (!st.anon) {
+        if (st.to.sc_url) opt.append(sw('✉️ Also in SoundCloud messages', () => st.dm, (v) => { st.dm = v; }, 'SCX opens a SoundCloud message to them with a gift code — you only press Send. With SCX they see the gift as a card'));
+        else opt.append(el('small', 'cc-gstep', 'No SoundCloud link on their profile — only in SCX'));
+      }
+      card.append(opt);
+    }
     card.append(msg, status, sendB);
   }
   paint();
 }
+
+// ---- gift codes in SoundCloud messages: "SCX:gift:<item>:<number>:<variant>" → SCX draws a card instead
+function scxCode(kind, item, num, variant) {
+  if (!item) return '';
+  if (kind === 'gift') return 'SCX:gift:' + item + ':' + (num || 0) + ':' + (variant || 0);
+  return 'SCX:' + kind + ':' + item;
+}
+// open a SoundCloud message to them with the text in it — YOU press Send (SCX never sends it by itself)
+async function sendScDm(profileUrl, text) {
+  try { await navigator.clipboard.writeText(text); } catch {}
+  const fallback = () => toast('✉️ The gift code is copied — open "Message" on their SoundCloud profile and press Ctrl+V, then Send');
+  if (!/^https:\/\/soundcloud\.com\/[a-z0-9_-]{1,60}$/i.test(profileUrl || '')) return fallback();
+  togglePanel(false);
+  if (STORE.open) closeStore();
+  goSoundCloud(profileUrl);
+  const path = new URL(profileUrl).pathname.toLowerCase();
+  await waitFor(() => location.pathname.toLowerCase().replace(/\/$/, '') === path, 8000);
+  const btn = await waitFor(() => [...document.querySelectorAll('button, a')].find((b) =>
+    b.matches('.sc-button-message, [class*="sendMessage"], [aria-label="Message"], [title="Message"]') || /^\s*message\s*$/i.test(b.textContent || '')), 6000);
+  if (!btn) return fallback();
+  btn.click();
+  const box = await waitFor(() => document.querySelector('[role="dialog"] textarea, .modal textarea, textarea[name="body"], .messageForm textarea, textarea[placeholder*="essage" i]'), 6000);
+  if (!box) return fallback();
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+  setter.call(box, text);
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+  box.focus();
+  toast('✉️ The gift message is ready — press Send in SoundCloud');
+}
+const CODE_RE = /SCX:(gift|pack|ticket|tag|frame|coins):(\d{1,12})(?::(\d{1,9}):(\d{1,12}))?/;
+function giftCard(m) {
+  const [, kind, a, b, c] = m;
+  const item = SHOP.items.find((x) => x.id === Number(a));
+  const card = el('span', 'ccx-gcard');
+  const pic = el('span', 'ccx-gcard-pic');
+  const foot = el('span', 'ccx-gcard-foot');
+  if (kind === 'coins') {
+    pic.append(el('b', 'ccx-gcard-coins', '🪙'));
+    foot.append(el('b', null, Number(a).toLocaleString('en-US') + ' coins'));
+  } else if (!item) {
+    pic.append(el('b', 'ccx-gcard-coins', '🎁'));
+    foot.append(el('b', null, 'SoundCloudX gift'));
+  } else {
+    const d = item.data || {};
+    if (kind === 'gift') {
+      pic.append(giftEl(d, 110, { variant: Number(c) || null }));
+      if (item.supply) pic.append(el('em', 'ccx-gcard-lim', 'LIMITED'));
+      const rr = rarityOf(d);
+      const rc = el('em', 'ccx-gcard-rar', RARITY[rr][0]);
+      rc.style.setProperty('--rc', RARITY[rr][1]);
+      pic.append(rc);
+      const vc = Number(c) && variantChip(Number(c));
+      foot.append(el('b', null, item.name));
+      if (vc) foot.append(vc);
+      if (Number(b)) foot.append(el('small', null, '#' + Number(b).toLocaleString('en-US') + (item.supply ? ' / ' + item.supply.toLocaleString('en-US') : '')));
+      card.style.setProperty('--rc', RARITY[rr][1]);
+    } else {
+      if (kind === 'pack') pic.append(packEl(d, 100));
+      else if (kind === 'ticket') pic.append(ticketEl(d, 96));
+      else if (kind === 'tag') pic.append(tagEl({ tag_text: d.text || item.name, tag_color: d.color }));
+      else if (kind === 'frame') pic.append(avatarEl({ nick: '?', frame: d }, 80));
+      foot.append(el('b', null, item.name), el('small', null, { pack: 'Gift pack', ticket: 'Ticket', tag: 'Tag', frame: 'Frame' }[kind]));
+    }
+  }
+  card.append(pic, foot);
+  card.title = 'SoundCloudX gift';
+  return card;
+}
+let codeShopAsked = 0;
+function renderGiftCodes() {
+  if (!document.body || !/^\/(messages|notifications)/.test(location.pathname)) return;
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.nodeValue && n.nodeValue.includes('SCX:') && !(n.parentElement && n.parentElement.closest('.ccx-gcard, #cc-panel, #cc-store, textarea, [contenteditable]')) ? 1 : 3),
+  });
+  const found = [];
+  while (w.nextNode()) found.push(w.currentNode);
+  if (found.length && !SHOP.items.length && Date.now() - codeShopAsked > 15000) {
+    codeShopAsked = Date.now();
+    onlineCall('shop').then((r) => { SHOP.items = r.items || []; renderGiftCodes(); }).catch(() => {});
+    return;
+  }
+  for (const n of found) {
+    const m = CODE_RE.exec(n.nodeValue);
+    if (!m) continue;
+    // "🎁 Teddy Bear for you in SoundCloudX — SCX:gift:…" → only the card (+ any other text after it)
+    let after = n.nodeValue.slice(m.index + m[0].length);
+    let before = n.nodeValue.slice(0, m.index).replace(/🎁.*for you in SoundCloudX\s*—\s*$/, '');
+    const frag = document.createDocumentFragment();
+    if (before.trim()) frag.append(document.createTextNode(before));
+    frag.append(giftCard(m));
+    if (after.trim()) frag.append(document.createTextNode(after));
+    n.replaceWith(frag);
+  }
+}
+setInterval(renderGiftCodes, 1500);
 
 function renderOnline() {
   const box = ON.root;
@@ -4844,10 +5759,17 @@ async function loadShop() {
   renderShop();
 }
 
+const CFG = {};
+async function loadConfig() {
+  try { Object.assign(CFG, (await onlineCall('config')) || {}); } catch {}
+  refreshPanel();
+}
+const okInvite = (u) => /^https:\/\/(discord\.gg|(www\.)?discord\.com\/invite)\/[A-Za-z0-9-]{2,40}\/?$/.test(u || '');
+
 async function refreshMe() {
   try {
     const r = await onlineCall('init');
-    if (r.profile) { ON.me = r.profile; COINS.ping(); }
+    if (r.profile) { ON.me = r.profile; COINS.ping(); applyUserCss(); applyCSS(); applyMulti(); refreshPanel(); }
   } catch {}
 }
 
@@ -4856,7 +5778,7 @@ async function buyItem(it, btn) {
   if (SHOP.armedId !== it.id || Date.now() - SHOP.armed > 4000) {
     SHOP.armedId = it.id;
     SHOP.armed = Date.now();
-    btn.textContent = 'Buy for 🪙 ' + it.price.toLocaleString('en-US') + '?';
+    btn.textContent = 'Buy for 🪙 ' + myPrice(it.price).toLocaleString('en-US') + '?';
     btn.classList.add('cc-armed');
     return;
   }
@@ -4891,10 +5813,12 @@ async function useItem(it, where) {
   const d = it.data || {};
   if (it.kind === 'tag') {
     try { await onlineCall('equip', { item: it.id }); await refreshMe(); toast('Tag on: ' + (d.text || it.name)); } catch (e) { toast(e.message); }
+  } else if (it.kind === 'frame') {
+    try { await onlineCall('equipFrame', { item: it.id }); await refreshMe(); toast('Frame on: ' + it.name); } catch (e) { toast(e.message); }
   } else if (it.kind === 'theme') {
     applyShopTheme(d);
     toast(it.name + ' theme on');
-  } else if (safeImg(d.url)) {
+  } else if ((it.kind === 'image' || it.kind === 'gif') && safeImg(d.url)) {
     if (where === 'menu') { setSlotUrl('menu', d.url); applyMenu(); }
     else { setSlotUrl('bg', d.url); S.bg.mode = 'custom'; saveAll(); applyBg(); }
     toast(it.name + (where === 'menu' ? ' → menu' : ' → background'));
@@ -4902,6 +5826,13 @@ async function useItem(it, where) {
   renderShop();
 }
 
+function priceEl(base) {
+  const w = el('span', 'cc-price');
+  const pr = myPrice(base);
+  w.append(el('span', null, '🪙 ' + pr.toLocaleString('en-US')));
+  if (pr !== base) { w.append(el('s', null, base.toLocaleString('en-US'))); w.title = '⭐ Premium −10%'; }
+  return w;
+}
 function shopCard(it) {
   const d = it.data || {};
   const owned = SHOP.owned.has(it.id);
@@ -4910,7 +5841,8 @@ function shopCard(it) {
   if (it.kind === 'pack') {
     pic.append(packEl(d, 54));
   } else if (it.kind === 'gift') {
-    pic.append(giftEl(d, 52));
+    pic.append(giftEl(d, 52, it.supply ? { supply: it.supply, name: it.name } : null));
+    if (it.supply) { const lb = el('small', 'cc-limited', 'LIMITED'); lb.title = it.supply.toLocaleString('en-US') + ' exist · ' + (it.sold || 0).toLocaleString('en-US') + ' sold'; pic.append(lb); }
     card.classList.add('cc-r-' + rarityOf(d));
     card.style.setProperty('--rc', RARITY[rarityOf(d)][1]);
   } else if (it.kind === 'tag') {
@@ -4928,13 +5860,12 @@ function shopCard(it) {
   const info = el('div', 'cc-shopinfo');
   info.append(el('b', null, it.name));
   if (it.kind === 'pack') {
-    info.append(el('span', null, '🪙 ' + it.price.toLocaleString('en-US')), oddsEl(d));
+    info.append(priceEl(it.price), oddsEl(d));
   } else if (it.kind === 'gift') {
     const left = it.supply ? Math.max(0, it.supply - (it.sold || 0)) : null;
-    const sub = el('span', null, '🪙 ' + it.price.toLocaleString('en-US'));
-    info.append(rarityChip(d), sub);
+    info.append(rarityChip(d), priceEl(it.price));
     if (left != null) info.append(el('small', 'cc-supply' + (left ? '' : ' cc-soldout'), left ? left.toLocaleString('en-US') + ' / ' + it.supply.toLocaleString('en-US') + ' left' : 'Sold out'));
-  } else info.append(el('span', null, owned ? 'Owned' : '🪙 ' + it.price.toLocaleString('en-US')));
+  } else info.append(owned ? el('span', null, 'Owned') : priceEl(it.price));
   card.append(pic, info);
   const row = el('div', 'cc-shopbtns');
   if (it.kind === 'pack') {
@@ -4965,8 +5896,9 @@ function shopCard(it) {
     card.append(gb);
   }
   if (!owned) {
-    const b = el('button', 'cc-sbtn' + (coinBalance() < it.price ? ' cc-dim' : ''), coinBalance() < it.price ? 'Need 🪙 ' + (it.price - coinBalance()).toLocaleString('en-US') : 'Buy');
-    b.addEventListener('click', () => { if (coinBalance() >= it.price) buyItem(it, b); else toast('Not enough coins yet'); });
+    const pr = myPrice(it.price);
+    const b = el('button', 'cc-sbtn' + (coinBalance() < pr ? ' cc-dim' : ''), coinBalance() < pr ? 'Need 🪙 ' + (pr - coinBalance()).toLocaleString('en-US') : 'Buy');
+    b.addEventListener('click', () => { if (coinBalance() >= pr) buyItem(it, b); else toast('Not enough coins yet'); });
     row.append(b);
   } else if (it.kind === 'tag') {
     const on = ON.me && ON.me.tag_text && ON.me.tag_text === (d.text || it.name);
@@ -5007,8 +5939,19 @@ function shopCard(it) {
   return card;
 }
 
+const SHOP_CATS = [
+  ['pack', '🎁', 'Gift packs'], ['gift', '✨', 'Gifts'], ['market', '🏪', 'Market'], ['tag', '🏷️', 'Tags'], ['frame', '⭕', 'Frames'],
+  ['theme', '🎨', 'Themes'], ['gif', '🎞️', 'GIFs'], ['image', '🖼️', 'Pictures'],
+];
+const catItems = (kind) => {
+  const list = SHOP.items.filter((x) => x.kind === kind && x.active !== false);
+  if (kind === 'gift') list.sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.data)) - RARITY_ORDER.indexOf(rarityOf(b.data)) || a.price - b.price);
+  return list;
+};
+
 function renderShop() {
   const box = SHOP.root;
+  if (STORE.open) renderStore();
   if (!box) return;
   const mark = refreshers.length;
   box.textContent = '';
@@ -5021,20 +5964,896 @@ function renderShop() {
   }
   if (SHOP.err) box.append(el('div', 'cc-status', SHOP.err));
   if (SHOP.loading && !SHOP.items.length) box.append(note('Loading the shop…'));
-  box.append(wideBtn('🎁  Send a gift / coins to someone', () => giftDialog({}), 'cc-ghost'));
-  for (const [kind, title] of [['pack', '🎁 Gift packs'], ['gift', '✨ Gifts'], ['tag', '🏷️ Tags'], ['frame', '⭕ Frames'], ['theme', '🎨 Themes'], ['gif', '🎞️ GIFs'], ['image', '🖼️ Pictures']]) {
-    const list = SHOP.items.filter((x) => x.kind === kind && x.active !== false);
-    if (kind === 'gift') list.sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.data)) - RARITY_ORDER.indexOf(rarityOf(b.data)) || a.price - b.price);
-    if (!list.length) continue;
-    box.append(sectionTitle(title));
-    const grid = el('div', 'cc-shopgrid');
+  // categories → the catalog opens in the middle of the screen
+  box.append(sectionTitle('Categories'));
+  const cats = el('div', 'cc-cats');
+  for (const [kind, ic, name] of SHOP_CATS) {
+    const n = kind === 'market' ? null : catItems(kind).length;
+    if (n === 0) continue;
+    const b = el('button', 'cc-cat');
+    b.append(el('i', null, ic), el('span', null, name), el('small', null, n == null ? '›' : String(n)));
+    b.addEventListener('click', () => openStore(kind));
+    cats.append(b);
+  }
+  box.append(cats, wideBtn('🎁  Send a gift / coins to someone', () => giftDialog({}), 'cc-ghost'));
+  box.append(sectionTitle('⭐ Premium'), premiumCard());
+  box.append(sectionTitle('🎟️ Promo code'), promoBox());
+  box.append(sectionTitle('🎫 Tickets in songs'),
+    toggleRow('Show 🎫 next to songs', () => S.tk.show, (v) => { S.tk.show = v; saveAll(); scanTickets(); renderShop(); }),
+    toggleRow('Ticket animations', () => S.tk.anim, (v) => { S.tk.anim = v; saveAll(); scanTickets(); renderShop(); }),
+    note('Hidden or not — listening 20 s to a song with a ticket still gives it to you.'));
+  refreshers.splice(mark).forEach((f) => f());
+}
+
+function premiumCard() {
+  const c = el('div', 'cc-premium' + (ON.me && ON.me.premium ? ' cc-has' : ''));
+  c.append(el('b', null, ON.me && ON.me.premium ? '★ You have SCX Premium' : '★ SCX Premium'));
+  const ul = el('ul');
+  ['100 places for gifts (instead of 50)', '−10% on everything in the Shop', '★ star next to your nick everywhere'].forEach((t) => ul.append(el('li', null, t)));
+  c.append(ul);
+  if (!(ON.me && ON.me.premium)) {
+    let armed = 0;
+    const b = wideBtn('Get Premium · 🪙 1,000,000', async () => {
+      if (coinBalance() < 1000000) return toast('You need 🪙 ' + (1000000 - coinBalance()).toLocaleString('en-US') + ' more');
+      if (Date.now() - armed > 4000) { armed = Date.now(); b.textContent = 'Sure? Pay 🪙 1,000,000'; b.classList.add('cc-armed'); return; }
+      b.textContent = '…';
+      await onlineSync();
+      try { await onlineCall('buyPremium'); await refreshMe(); toast('★ Welcome to SCX Premium!'); giftBurst(); } catch (e) { toast(e.message); }
+      renderShop();
+    });
+    c.append(b);
+  }
+  return c;
+}
+
+function promoBox() {
+  const w = el('div', 'cc-promo');
+  const i = el('input', 'cc-text');
+  i.placeholder = 'Enter a promo code';
+  i.maxLength = 32;
+  const b = el('button', 'cc-sbtn', 'Redeem');
+  const go = async () => {
+    if (!i.value.trim()) return;
+    b.textContent = '…';
+    try {
+      const r = await onlineCall('redeem', { code: i.value });
+      i.value = '';
+      await refreshMe();
+      MYG.list = null;
+      SHOP.items = [];
+      loadShop();
+      giftBurst();
+      toast(r.kind === 'coins' ? '🎟️ +' + Number(r.amount).toLocaleString('en-US') + ' 🪙' : r.kind === 'premium' ? '🎟️ ★ You got SCX Premium!'
+        : '🎟️ You got ' + r.item + ((r.item_kind === 'gift' || r.item_kind === 'pack') ? ' — see My gifts' : ' — see the Shop'));
+    } catch (e) { toast(e.message); }
+    b.textContent = 'Redeem';
+  };
+  b.addEventListener('click', go);
+  i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+  w.append(i, b);
+  return w;
+}
+
+// ================================================================ SHOP WINDOW (catalog in the middle + player at the bottom)
+const STORE = { open: false, cat: 'pack', el: null, body: null, market: null, sort: 'new', q: '', player: null,
+  f: (() => { try { return Object.assign({ sort: 'cheap', soldout: true, limited: false, max: 0, afford: false }, JSON.parse(localStorage.getItem('ccx_shopf') || '{}')); } catch { return { sort: 'cheap', soldout: true, limited: false, max: 0, afford: false }; } })() };
+const soldOut = (it) => !!(it.supply && (it.sold || 0) >= it.supply);
+function filterItems(list) {
+  const f = STORE.f;
+  let out = list.filter((it) => (f.soldout || !soldOut(it)) && (!f.limited || it.supply) && (!f.max || myPrice(it.price) <= f.max) && (!f.afford || myPrice(it.price) <= coinBalance()));
+  const rk = (it) => RARITY_ORDER.indexOf(rarityOf(it.data));
+  if (f.sort === 'cheap') out.sort((a, b) => a.price - b.price);
+  else if (f.sort === 'expensive') out.sort((a, b) => b.price - a.price);
+  else if (f.sort === 'rarity') out.sort((a, b) => rk(b) - rk(a) || b.price - a.price);
+  else if (f.sort === 'new') out.sort((a, b) => b.id - a.id);
+  if (!f.soldout) return out;
+  return out.filter((x) => !soldOut(x)).concat(out.filter(soldOut)); // sold out at the end
+}
+function shopToolbar() {
+  const f = STORE.f;
+  const save = () => { try { localStorage.setItem('ccx_shopf', JSON.stringify(f)); } catch {} renderStore(); };
+  const bar = el('div', 'cs-filters');
+  const sort = el('select', 'cc-text cs-sel');
+  [['cheap', '↑ Cheapest first'], ['expensive', '↓ Most expensive first'], ['rarity', '★ Rarest first'], ['new', '🆕 Newest first']].forEach(([v, l]) => { const o = el('option', null, l); o.value = v; sort.append(o); });
+  sort.value = f.sort;
+  sort.addEventListener('change', () => { f.sort = sort.value; save(); });
+  const max = el('select', 'cc-text cs-sel');
+  [[0, 'Any price'], [1000, 'up to 1k'], [5000, 'up to 5k'], [20000, 'up to 20k'], [100000, 'up to 100k'], [1000000, 'up to 1M']].forEach(([v, l]) => { const o = el('option', null, '🪙 ' + l); o.value = v; max.append(o); });
+  max.value = String(f.max || 0);
+  max.addEventListener('change', () => { f.max = Number(max.value) || 0; save(); });
+  const chip = (label, key, invert) => {
+    const on = invert ? !f[key] : !!f[key];
+    const b = el('button', 'cc-fxchip' + (on ? ' cc-on' : ''), label);
+    b.addEventListener('click', () => { f[key] = !f[key]; save(); });
+    return b;
+  };
+  bar.append(sort, max, chip('⭐ Limited only', 'limited'), chip('🚫 Hide sold out', 'soldout', true), chip('🪙 I can afford', 'afford'));
+  return bar;
+}
+function dlgHost() {
+  if (STORE.open && STORE.el) return STORE.el.querySelector('.cs-win');
+  togglePanel(true);
+  return panel;
+}
+function openStore(cat) {
+  STORE.cat = cat || STORE.cat;
+  if (!STORE.el) buildStore();
+  STORE.open = true;
+  togglePanel(false);
+  STORE.el.classList.add('cs-on');
+  renderStore();
+  if (!SHOP.items.length) loadShop();
+}
+function closeStore() {
+  STORE.open = false;
+  if (STORE.el) STORE.el.classList.remove('cs-on');
+}
+function buildStore() {
+  const root = el('div');
+  root.id = 'cc-store';
+  const win = el('div', 'cs-win');
+  const head = el('div', 'cs-head');
+  STORE.coins = el('b', 'cs-coins');
+  const x = el('button', 'cc-gx', '✕');
+  x.title = 'Close (Esc)';
+  x.addEventListener('click', closeStore);
+  const logo = el('div', 'cs-logo');
+  logo.append(el('b', null, '🛒 SCX Shop'), STORE.coins);
+  head.append(logo, x);
+  STORE.cats = el('div', 'cs-cats');
+  STORE.body = el('div', 'cs-body');
+  STORE.player = playerBar('cs-player');
+  win.append(head, STORE.cats, STORE.body, STORE.player.el);
+  root.append(win);
+  root.addEventListener('mousedown', (e) => { if (e.target === root) closeStore(); });
+  document.documentElement.append(root);
+  STORE.el = root;
+  setInterval(() => { if (STORE.open) STORE.player.update(); }, 250);
+}
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && STORE.open && !(STORE.el && STORE.el.querySelector('.cc-gdlg, .cc-popen'))) { e.stopImmediatePropagation(); closeStore(); }
+}, true);
+
+function renderStore() {
+  if (!STORE.el) return;
+  const mark = refreshers.length;
+  STORE.coins.textContent = '🪙 ' + coinBalance().toLocaleString('en-US') + (ON.me && ON.me.premium ? '  ★' : '');
+  STORE.cats.textContent = '';
+  for (const [kind, ic, name] of SHOP_CATS) {
+    if (kind !== 'market' && !catItems(kind).length && SHOP.items.length) continue;
+    const b = el('button', 'cs-cat' + (STORE.cat === kind ? ' cc-on' : ''));
+    b.append(el('i', null, ic), el('span', null, name));
+    b.addEventListener('click', () => { STORE.cat = kind; renderStore(); });
+    STORE.cats.append(b);
+  }
+  const box = STORE.body;
+  const keep = box.scrollTop;
+  box.textContent = '';
+  if (!ON.me) box.append(note('Join SCX Online (Online tab) first.'));
+  else if (STORE.cat === 'market') renderMarket(box);
+  else {
+    const all = catItems(STORE.cat);
+    const list = filterItems(all);
+    if (all.length > 1) box.append(shopToolbar());
+    if (!list.length) box.append(note(SHOP.loading || !SHOP.items.length ? 'Loading…' : all.length ? 'Nothing matches the filters.' : 'Nothing here yet.'));
+    const grid = el('div', 'cc-shopgrid cs-grid');
     list.forEach((it) => grid.append(shopCard(it)));
     box.append(grid);
+    if (STORE.cat === 'pack') box.append(note('You get one of the gifts shown on the pack — the % is the chance. One pack every 10 seconds.'));
+    if (STORE.cat === 'tag' || STORE.cat === 'frame') box.append(note('Shown on your SCX profile and on your SoundCloud page (for everyone who uses SCX). 🎁 = send it to someone.'));
   }
-  if (!SHOP.loading && !SHOP.items.length && !SHOP.err) box.append(note('The shop is empty for now.'));
-  if (SHOP.items.some((x) => x.kind === 'pack')) box.append(note('Packs: you get one of the gifts shown on the pack — the % is the chance.'));
-  box.append(note('Tags, frames and profile pictures / GIFs show on your SCX profile and on your SoundCloud page (for everyone who uses SCX).'));
+  box.scrollTop = keep;
   refreshers.splice(mark).forEach((f) => f());
+}
+
+// ---- market
+async function renderMarket(box) {
+  const bar = el('div', 'cs-mbar');
+  const q = el('input', 'cc-text');
+  q.placeholder = '🔎 Search (e.g. Crown)';
+  q.value = STORE.q;
+  let t;
+  q.addEventListener('input', () => { STORE.q = q.value; clearTimeout(t); t = setTimeout(() => { STORE.market = null; renderStore(); }, 400); });
+  const sort = el('div', 'cc-gtabs');
+  [['new', 'Newest'], ['cheap', 'Cheapest'], ['expensive', 'Most expensive']].forEach(([k, l]) => {
+    const b = el('button', STORE.sort === k ? 'cc-on' : '', l);
+    b.addEventListener('click', () => { STORE.sort = k; STORE.market = null; renderStore(); });
+    sort.append(b);
+  });
+  const sell = el('button', 'cc-sbtn', '➕ Sell');
+  sell.addEventListener('click', () => pickToSell());
+  bar.append(q, sort, sell);
+  box.append(bar);
+  const grid = el('div', 'cc-shopgrid cs-grid');
+  box.append(grid);
+  if (!STORE.market) {
+    grid.append(note('Loading…'));
+    try { STORE.market = (await onlineCall('market', { sort: STORE.sort, q: STORE.q })) || []; } catch (e) { grid.textContent = ''; grid.append(el('div', 'cc-status', e.message)); return; }
+    if (STORE.open && STORE.cat === 'market') renderStore();
+    return;
+  }
+  const mine = STORE.market.filter((l) => l.seller === ON.uid).length;
+  box.insertBefore(el('div', 'cc-gcount', '🏪 Your things on the market: ' + mine + ' / 10'), grid);
+  if (!STORE.market.length) grid.append(note(STORE.q ? 'Nothing found.' : 'The market is empty. Be the first — press ➕ Sell.'));
+  STORE.market.forEach((l) => grid.append(marketCard(l)));
+  setTimeout(() => { if (document.activeElement !== q && STORE.q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } });
+}
+function marketCard(l) {
+  const d = l.data || {};
+  const card = el('div', 'cc-shopcard cc-shop-gift cs-mcard');
+  if (l.kind === 'gift') { card.style.setProperty('--rc', RARITY[rarityOf(d)][1]); card.classList.add('cc-r-' + rarityOf(d)); }
+  const pic = el('div', 'cc-shoppic');
+  const sItem = SHOP.items.find((x) => x.kind === l.kind && x.name === l.name);
+  pic.append(l.kind === 'pack' ? packEl(d, 52) : l.kind === 'ticket' ? ticketEl(d, 52) : giftEl(d, 52, { num: l.num, supply: sItem && sItem.supply, name: l.name, variant: l.variant }));
+  const info = el('div', 'cc-shopinfo');
+  info.append(el('b', null, l.name + (l.num ? ' #' + l.num : '')));
+  if (l.kind === 'gift') info.append(rarityChip(d));
+  if (l.variant && variantChip(l.variant)) info.append(variantChip(l.variant));
+  if (l.kind === 'ticket') info.append(el('small', 'cc-orig', ticketText(d)));
+  const by = el('small', 'cc-seller');
+  by.append(el('span', null, 'by ' + ((l.profiles && l.profiles.nick) || '?')));
+  if (l.profiles && l.profiles.premium) by.append(premiumStar());
+  info.append(el('span', null, '🪙 ' + Number(l.price).toLocaleString('en-US')));
+  // the price it had in the Shop (kept on the listing, so sold-out limited gifts still show it)
+  const orig = l.orig_price != null ? Number(l.orig_price) : sItem ? Number(sItem.price) : null;
+  if (orig) {
+    const op = el('small', 'cc-orig');
+    op.textContent = 'Original price: 🪙 ' + orig.toLocaleString('en-US');
+    const diff = Math.round(((l.price - orig) / orig) * 100);
+    if (diff) op.append(el('b', diff > 0 ? 'cc-up' : 'cc-down', (diff > 0 ? ' +' : ' ') + diff + '%'));
+    if (sItem && sItem.supply && (sItem.sold || 0) >= sItem.supply) op.append(el('em', 'cc-soldtag', ' · sold out in Shop'));
+    info.append(op);
+  }
+  info.append(by);
+  card.append(pic, info);
+  const row = el('div', 'cc-shopbtns');
+  if (l.seller === ON.uid) {
+    const b = el('button', 'cc-sbtn cc-ghostbtn', 'Take off');
+    b.addEventListener('click', async () => {
+      b.textContent = '…';
+      try { await onlineCall('marketCancel', { listing: l.id }); toast('Taken off the market'); } catch (e) { toast(e.message); }
+      STORE.market = null; MYG.list = null; renderStore();
+    });
+    row.append(b);
+  } else {
+    let armed = 0;
+    const b = el('button', 'cc-sbtn' + (coinBalance() < l.price ? ' cc-dim' : ''), 'Buy');
+    b.addEventListener('click', async () => {
+      if (coinBalance() < l.price) return toast('Not enough coins yet');
+      if (Date.now() - armed > 4000) { armed = Date.now(); b.textContent = 'Buy for 🪙 ' + fmtShort(l.price) + '?'; b.classList.add('cc-armed'); return; }
+      b.textContent = '…';
+      await onlineSync();
+      try { await onlineCall('marketBuy', { listing: l.id }); await refreshMe(); toast('🎉 ' + l.name + ' is yours'); } catch (e) { toast(e.message); }
+      STORE.market = null; MYG.list = null; renderStore();
+    });
+    row.append(b);
+  }
+  card.append(row);
+  return card;
+}
+async function pickToSell() {
+  let list = MYG.list;
+  try { if (!list) { list = (await onlineCall('myGifts')) || []; MYG.list = list; MYG.at = Date.now(); } } catch (e) { return toast(e.message); }
+  const can = list.filter((g) => (g.kind === 'gift' || g.kind === 'pack' || g.kind === 'ticket') && !g.listing);
+  const wrap = el('div', 'cc-gdlg');
+  const card = el('div', 'cc-gcard');
+  wrap.append(card);
+  wrap.addEventListener('mousedown', (e) => { if (e.target === wrap) wrap.remove(); });
+  const head = el('div', 'cc-ghead');
+  const x = el('button', 'cc-gx', '✕');
+  x.addEventListener('click', () => wrap.remove());
+  head.append(el('b', null, '➕ What do you sell?'), x);
+  const grid = el('div', 'cc-gitems');
+  if (!can.length) grid.append(note('You have no gifts to sell.'));
+  can.forEach((g) => {
+    const b = el('button', 'cc-gitem');
+    b.append(g.kind === 'pack' ? packEl(g.data, 40) : g.kind === 'ticket' ? ticketEl(g.data, 40) : giftEl(g.data, 40, { variant: g.variant }), el('small', null, g.num ? '#' + g.num : g.name));
+    b.title = g.name;
+    if (g.kind === 'gift') b.style.setProperty('--rc', RARITY[rarityOf(g.data)][1]);
+    b.addEventListener('click', () => { wrap.remove(); sellDialog(g); });
+    grid.append(b);
+  });
+  card.append(head, grid);
+  dlgHost().append(wrap);
+}
+
+// ================================================================ MINIMAL MODE (big player + next up + recommendations)
+const MIN = { on: false, el: null, player: null, url: '', recs: null, recUrl: '', nextKey: '', timer: 0 };
+function toggleMinimal(force) {
+  const on = force == null ? !MIN.on : !!force;
+  if (on === MIN.on) return;
+  MIN.on = on;
+  try { localStorage.setItem('ccx_minimal', on ? '1' : ''); } catch {}
+  if (on) {
+    if (vinylOn) toggleVinyl(false);
+    if (studioOn) toggleStudio(false);
+    if (!MIN.el) buildMinimal();
+    MIN.el.classList.add('cm-on');
+    document.documentElement.classList.add('ccx-minimal');
+    MIN.url = ''; MIN.nextKey = '';
+    updateMinimal();
+    MIN.timer = setInterval(updateMinimal, 400);
+  } else {
+    clearInterval(MIN.timer);
+    if (MIN.el) MIN.el.classList.remove('cm-on');
+    document.documentElement.classList.remove('ccx-minimal');
+  }
+}
+function buildMinimal() {
+  const root = el('div');
+  root.id = 'cc-minimal';
+  MIN.bg = el('div', 'cm-bg');
+  const main = el('div', 'cm-main');
+  const now = el('div', 'cm-now');
+  MIN.cover = el('div', 'cm-cover');
+  MIN.title = el('b', 'cm-title');
+  MIN.artist = el('span', 'cm-artist');
+  const acts = el('div', 'cm-acts');
+  MIN.like = el('button', 'cm-act', '♥ Like');
+  MIN.like.addEventListener('click', () => { const b = document.querySelector('.playbackSoundBadge__like'); if (b) { b.click(); setTimeout(updateMinimal, 300); } });
+  const open = el('button', 'cm-act', '↗ Open on SoundCloud');
+  open.addEventListener('click', () => { const tr = lastTrackInfo || {}; if (tr.url) { toggleMinimal(false); goSoundCloud(tr.url); } });
+  acts.append(MIN.like, open);
+  now.append(MIN.cover, MIN.title, MIN.artist, acts);
+  const side = el('div', 'cm-side');
+  MIN.next = el('div', 'cm-list');
+  MIN.recs = el('div', 'cm-list');
+  side.append(el('div', 'cm-h', 'Next up'), MIN.next, el('div', 'cm-h', 'Songs like this'), MIN.recs);
+  main.append(now, side);
+  MIN.player = playerBar('cm-player');
+  const x = el('button', 'cm-x', '✕');
+  x.title = 'Leave minimal mode (Esc)';
+  x.addEventListener('click', () => toggleMinimal(false));
+  root.append(MIN.bg, main, MIN.player.el, x);
+  document.documentElement.append(root);
+  MIN.el = root;
+}
+function cmRow(it, onClick, sub) {
+  const r = el('button', 'cm-row');
+  const a = el('i');
+  if (safeImg(it.art)) a.style.backgroundImage = cssUrl(it.art);
+  const tx = el('div');
+  tx.append(el('b', null, it.title || '?'), el('span', null, it.artist || ''));
+  r.append(a, tx);
+  if (sub) r.append(el('small', null, sub));
+  r.addEventListener('click', onClick);
+  return r;
+}
+function updateMinimal() {
+  if (!MIN.on || !MIN.el) return;
+  MIN.player.update();
+  const tr = lastTrackInfo || {};
+  if (tr.url !== MIN.url) {
+    MIN.url = tr.url || '';
+    const big = bigArt(tr.art);
+    const img = big && safeImg(big) ? cssUrl(big) : '';
+    MIN.cover.style.backgroundImage = img;
+    MIN.bg.style.backgroundImage = img;
+    MIN.title.textContent = tr.title || 'Nothing playing';
+    MIN.artist.textContent = tr.artist || 'Play something on SoundCloud';
+    loadRecs();
+  }
+  const lb = document.querySelector('.playbackSoundBadge__like');
+  const liked = !!(lb && lb.classList.contains('sc-button-selected'));
+  MIN.like.textContent = liked ? '♥ Liked' : '♡ Like';
+  MIN.like.classList.toggle('cm-liked', liked);
+  const next = tr.next || [];
+  const key = next.map((n) => n.title).join('|');
+  if (key !== MIN.nextKey) {
+    MIN.nextKey = key;
+    MIN.next.textContent = '';
+    if (!next.length) MIN.next.append(el('div', 'cm-empty', 'Nothing in the queue'));
+    next.forEach((n, i) => MIN.next.append(cmRow(n, () => playNextUp(i))));
+  }
+}
+async function loadRecs() {
+  const url = MIN.url;
+  MIN.recs.textContent = '';
+  if (!url) return;
+  MIN.recs.append(el('div', 'cm-empty', 'Looking for similar songs…'));
+  let r = null;
+  for (let i = 0; i < 4 && MIN.on && MIN.url === url; i++) {
+    try { r = await webFrame.executeJavaScript(`window.__ccx && window.__ccx.related ? window.__ccx.related(${JSON.stringify(url)}) : { err: 'nokey' }`, true); } catch { r = { err: 'fail' }; }
+    if (r && r.list) break;
+    await sleep(2500); // SoundCloud has not called its API yet → wait a moment
+  }
+  if (MIN.url !== url) return;
+  MIN.recs.textContent = '';
+  const list = (r && r.list) || [];
+  if (!list.length) { MIN.recs.append(el('div', 'cm-empty', 'No similar songs found')); return; }
+  list.slice(0, 10).forEach((it) => MIN.recs.append(cmRow(it, () => listenToo(it.url), fmtTime(it.dur))));
+}
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && MIN.on && !G.on && !ED.on && !STORE.open && !(panel && panel.classList.contains('cc-open'))) { e.stopImmediatePropagation(); toggleMinimal(false); }
+}, true);
+setTimeout(() => { try { if (localStorage.getItem('ccx_minimal')) toggleMinimal(true); } catch {} }, 3000);
+
+// ================================================================ VINYL MODE 💿 (record player that reacts to the music)
+const VY = { el: null, raf: 0, url: '', lvl: 0, player: null };
+function toggleVinyl(force) {
+  const on = force == null ? !vinylOn : !!force;
+  if (on === vinylOn) return;
+  vinylOn = on;
+  if (on) {
+    if (MIN.on) toggleMinimal(false);
+    if (studioOn) toggleStudio(false);
+    if (!VY.el) buildVinyl();
+    VY.el.classList.add('cv-on');
+    document.documentElement.classList.add('ccx-minimal');
+    VY.url = '';
+    ensureAudio().catch(() => {});
+    VY.raf = requestAnimationFrame(vinylFrame);
+  } else {
+    cancelAnimationFrame(VY.raf);
+    if (VY.el) VY.el.classList.remove('cv-on');
+    document.documentElement.classList.remove('ccx-minimal');
+    setTimeout(maybeReleaseAudio, 50);
+  }
+}
+function buildVinyl() {
+  const root = el('div');
+  root.id = 'cc-vinyl';
+  VY.bg = el('div', 'cv-bg');
+  VY.beams = el('div', 'cv-beams');
+  const stage = el('div', 'cv-stage');
+  const deck = el('div', 'cv-deck');
+  VY.disc = el('div', 'cv-disc');
+  VY.label = el('div', 'cv-label');
+  VY.disc.append(VY.label, el('i', 'cv-hole'));
+  VY.disc.title = 'Play / pause';
+  VY.disc.addEventListener('click', () => { const b = playBtn(); if (b) b.click(); });
+  VY.arm = el('div', 'cv-arm');
+  VY.arm.append(el('i', 'cv-pivot'), el('i', 'cv-rod'), el('i', 'cv-head'));
+  deck.append(VY.disc, VY.arm);
+  const info = el('div', 'cv-info');
+  VY.title = el('b');
+  VY.artist = el('span');
+  VY.next = el('small');
+  info.append(el('em', null, 'NOW SPINNING'), VY.title, VY.artist, VY.next);
+  stage.append(deck, info);
+  VY.player = playerBar('cv-player');
+  const x = el('button', 'cm-x', '✕');
+  x.title = 'Leave vinyl mode (Esc)';
+  x.addEventListener('click', () => toggleVinyl(false));
+  root.append(VY.bg, VY.beams, stage, VY.player.el, x);
+  document.documentElement.append(root);
+  VY.el = root;
+  setInterval(() => { if (vinylOn) VY.player.update(); }, 300);
+}
+function vinylFrame() {
+  if (!vinylOn) return;
+  VY.raf = requestAnimationFrame(vinylFrame);
+  const tr = lastTrackInfo || {};
+  if (tr.url !== VY.url) {
+    VY.url = tr.url || '';
+    const big = bigArt(tr.art);
+    const img = big && safeImg(big) ? cssUrl(big) : '';
+    VY.label.style.backgroundImage = img;
+    VY.bg.style.backgroundImage = img;
+    VY.title.textContent = tr.title || 'Nothing playing';
+    VY.artist.textContent = tr.artist || '';
+  }
+  const n = (tr.next || [])[0];
+  VY.next.textContent = n ? 'Up next · ' + n.title + (n.artist ? ' — ' + n.artist : '') : '';
+  const playing = isPlayingNow();
+  VY.el.classList.toggle('cv-playing', playing);
+  // bass → pulse
+  const f = gameAudio();
+  let b = 0;
+  if (f && playing) { for (let i = 1; i <= 8; i++) b += f[i]; b /= 8 * 255; }
+  VY.lvl = Math.max(b, VY.lvl * 0.9);
+  VY.el.style.setProperty('--lv', VY.lvl.toFixed(3));
+}
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && vinylOn && !STORE.open && !(panel && panel.classList.contains('cc-open'))) { e.stopImmediatePropagation(); toggleVinyl(false); }
+}, true);
+
+// ================================================================ STUDIO MODE 🎛️ (all the buttons)
+const ST = { el: null, raf: 0, url: '', rate: 1, a: null, b: null, sleepAt: 0, sleepT: 0, cues: {}, player: null, btns: {} };
+try { ST.cues = JSON.parse(localStorage.getItem('ccx_cues') || '{}') || {}; } catch {}
+function toggleStudio(force) {
+  const on = force == null ? !studioOn : !!force;
+  if (on === studioOn) return;
+  studioOn = on;
+  if (on) {
+    if (MIN.on) toggleMinimal(false);
+    if (vinylOn) toggleVinyl(false);
+    if (!ST.el) buildStudio();
+    ST.el.classList.add('cst-on');
+    document.documentElement.classList.add('ccx-minimal');
+    ST.url = '';
+    ensureAudio().catch(() => {});
+    ST.raf = requestAnimationFrame(studioFrame);
+  } else {
+    cancelAnimationFrame(ST.raf);
+    if (ST.el) ST.el.classList.remove('cst-on');
+    document.documentElement.classList.remove('ccx-minimal');
+    setTimeout(maybeReleaseAudio, 50);
+  }
+}
+function setRate(r, pitch) {
+  ST.rate = r;
+  webFrame.executeJavaScript(`(() => { const X = window.__ccx; if (!X) return; X.rate = ${r}; X.pitch = ${pitch !== false}; X.els.forEach((m) => { m.preservesPitch = ${pitch !== false}; m.playbackRate = ${r}; }); })()`, true).catch(() => {});
+}
+function scClick(sel) { const b = document.querySelector(sel); if (b) b.click(); return b; }
+function buildStudio() {
+  const root = el('div');
+  root.id = 'cc-studio';
+  const top = el('div', 'cst-top');
+  // now playing
+  const now = el('div', 'cst-card cst-now');
+  ST.cover = el('div', 'cst-cover');
+  ST.title = el('b');
+  ST.artist = el('span');
+  ST.time = el('div', 'cst-time');
+  const nowTx = el('div', 'cst-nowtx');
+  nowTx.append(ST.title, ST.artist, ST.time);
+  now.append(ST.cover, nowTx);
+  // spectrum
+  const spec = el('div', 'cst-card cst-spec');
+  ST.cv = el('canvas');
+  spec.append(ST.cv);
+  // next up
+  const nu = el('div', 'cst-card cst-nu');
+  ST.next = el('div', 'cst-nulist');
+  nu.append(el('div', 'cst-h', 'Next up'), ST.next);
+  top.append(now, spec, nu);
+
+  const B = (label, title, fn, cls) => { const b = el('button', 'cst-btn' + (cls ? ' ' + cls : ''), label); b.title = title; b.addEventListener('click', fn); return b; };
+  const group = (name, ...kids) => { const g = el('div', 'cst-card cst-group'); const row = el('div', 'cst-row'); row.append(...kids); g.append(el('div', 'cst-h', name), row); return g; };
+
+  // transport
+  ST.btns.play = B('▶', 'Play / pause (Space)', () => { const b = playBtn(); if (b) b.click(); }, 'cst-big cst-play');
+  const transport = group('Transport',
+    B('⏮', 'Previous', () => scClick('.playControls__prev, .skipControl__previous'), 'cst-big'),
+    B('−30', 'Back 30 s', () => seekBy(-30)), B('−10', 'Back 10 s', () => seekBy(-10)), B('−5', 'Back 5 s', () => seekBy(-5)),
+    ST.btns.play,
+    B('+5', 'Forward 5 s', () => seekBy(5)), B('+10', 'Forward 10 s', () => seekBy(10)), B('+30', 'Forward 30 s', () => seekBy(30)),
+    B('⏭', 'Next', () => scClick('.playControls__next, .skipControl__next'), 'cst-big'),
+    B('⏪', 'Back to the start', () => seekToTime(0)));
+  // song
+  ST.btns.like = B('♡ Like', 'Like this song', () => scClick('.playbackSoundBadge__like'));
+  ST.btns.shuffle = B('🔀 Shuffle', 'Shuffle', () => scClick('.shuffleControl'));
+  ST.btns.repeat = B('🔁 Repeat', 'Repeat: off → all → one', () => scClick('.repeatControl'));
+  const song = group('Song', ST.btns.like, ST.btns.shuffle, ST.btns.repeat,
+    B('🔗 Copy link', 'Copy the song link', () => { const u = (lastTrackInfo || {}).url; if (!u) return; try { navigator.clipboard.writeText(u); toast('🔗 Link copied'); } catch { toast(u); } }),
+    B('↗ Open', 'Open the song page', () => { const u = (lastTrackInfo || {}).url; if (u) { toggleStudio(false); goSoundCloud(u); } }));
+  // speed
+  ST.btns.rates = [0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => B(r + '×', 'Speed ' + r + '×', () => { setRate(r, !ST.btns.chip || !ST.btns.chip.classList.contains('cst-on')); paintStudio(); }));
+  ST.btns.chip = B('🐿️ Pitch', 'Change the pitch with the speed (nightcore / slowed)', () => { ST.btns.chip.classList.toggle('cst-on'); setRate(ST.rate, !ST.btns.chip.classList.contains('cst-on')); });
+  const speed = group('Speed', ...ST.btns.rates, ST.btns.chip);
+  // loop + cues
+  ST.btns.A = B('A', 'Loop start = now', () => { ST.a = songNow(); if (ST.b != null && ST.b <= ST.a) ST.b = null; paintStudio(); });
+  ST.btns.B = B('B', 'Loop end = now (loops A → B)', () => { if (ST.a == null) return toast('Press A first'); const t = songNow(); if (t <= ST.a + 0.3) return toast('B must be after A'); ST.b = t; paintStudio(); });
+  ST.btns.loopOff = B('✕ Loop', 'Stop the loop', () => { ST.a = ST.b = null; paintStudio(); });
+  ST.btns.cues = [0, 1, 2, 3].map((i) => {
+    const b = B(String(i + 1), 'Hot cue ' + (i + 1) + ': click = save / jump, right click = clear', () => {
+      const u = (lastTrackInfo || {}).url; if (!u) return;
+      const list = ST.cues[u] || (ST.cues[u] = []);
+      if (list[i] == null) list[i] = Math.round(songNow() * 10) / 10; else seekToTime(list[i]);
+      saveCues(); paintStudio();
+    }, 'cst-cue cst-cue' + i);
+    b.addEventListener('contextmenu', (e) => { e.preventDefault(); const u = (lastTrackInfo || {}).url; if (u && ST.cues[u]) { ST.cues[u][i] = null; saveCues(); paintStudio(); } });
+    return b;
+  });
+  const loop = group('Loop  ·  Hot cues', ST.btns.A, ST.btns.B, ST.btns.loopOff, el('i', 'cst-sep'), ...ST.btns.cues);
+  // sound
+  ST.btns.boost = B('🔊 Boost', 'SoundBoost on / off', () => { S.boost.on = !S.boost.on; saveAll(); applyBoost(true); paintStudio(); });
+  ST.btns.bass = B('💥 Bass+', 'More bass', () => { S.boost.on = true; S.boost.bass = Math.min(15, (Number(S.boost.bass) || 0) + 3); saveAll(); applyBoost(); paintStudio(); });
+  ST.btns.flat = B('〰 Flat', 'No bass boost', () => { S.boost.bass = 0; saveAll(); applyBoost(); paintStudio(); });
+  ST.btns.mute = B('🔇 Mute', 'Mute / unmute', () => { scClick('.volume__speakerIcon, .volume button'); setTimeout(paintStudio, 200); });
+  ST.vol = el('input', 'cst-vol');
+  ST.vol.type = 'range'; ST.vol.min = '0'; ST.vol.max = '100';
+  ST.vol.addEventListener('input', () => { ST.volT = Date.now(); setVolume(Number(ST.vol.value) / 100); });
+  const sound = group('Sound', ST.btns.boost, ST.btns.bass, ST.btns.flat, ST.btns.mute, ST.vol);
+  // sleep timer
+  ST.btns.sleep = [15, 30, 60].map((m) => B(m + ' min', 'Pause the music in ' + m + ' minutes', () => setSleep(m)));
+  ST.btns.sleepEnd = B('End of song', 'Pause when this song ends', () => setSleep(-1));
+  ST.btns.sleepOff = B('Off', 'No sleep timer', () => setSleep(0));
+  ST.sleepInfo = el('span', 'cst-info');
+  const sleepG = group('Sleep timer', ...ST.btns.sleep, ST.btns.sleepEnd, ST.btns.sleepOff, ST.sleepInfo);
+
+  // effects
+  const PRE = { normal: [10, 22000], underwater: [10, 550], radio: [900, 3200], lofi: [120, 2600], bassonly: [10, 160], nobass: [260, 22000] };
+  ST.fx = ST.fx || { preset: 'normal', d8: false, pan: 0 };
+  ST.btns.pre = Object.entries({ normal: '〰 Normal', underwater: '🌊 Underwater', radio: '📻 Radio', lofi: '📼 Lo-fi', bassonly: '🔈 Bass only', nobass: '🎻 No bass' }).map(([k, l]) =>
+    B(l, 'Sound effect', () => { ST.fx.preset = k; ST.btns.pre.forEach((x) => x.classList.toggle('cst-on', x.dataset.k === k)); studioFx({ hp: PRE[k][0], lp: PRE[k][1] }); }));
+  ST.btns.pre.forEach((b, i) => { b.dataset.k = Object.keys(PRE)[i]; });
+  ST.btns.d8 = B('🎧 8D', '8D audio: the sound moves around your head (use headphones)', () => { ST.fx.d8 = !ST.fx.d8; ST.btns.d8.classList.toggle('cst-on', ST.fx.d8); studioFx({ d8: ST.fx.d8 }); });
+  ST.bal = el('input', 'cst-vol cst-bal');
+  ST.bal.type = 'range'; ST.bal.min = '-100'; ST.bal.max = '100'; ST.bal.value = '0';
+  ST.bal.title = 'Balance left / right (double click = middle)';
+  ST.bal.addEventListener('input', () => { ST.fx.pan = Number(ST.bal.value) / 100; studioFx({ pan: ST.fx.pan }); });
+  ST.bal.addEventListener('dblclick', () => { ST.bal.value = '0'; ST.fx.pan = 0; studioFx({ pan: 0 }); });
+  const balWrap = el('div', 'cst-balwrap');
+  balWrap.append(el('small', null, 'L'), ST.bal, el('small', null, 'R'));
+  ST.audioInfo = el('small', 'cst-audio', '🔌 …');
+  const fxG = group('Effects', ...ST.btns.pre, ST.btns.d8, balWrap, ST.audioInfo);
+  // fades
+  const fadeBusy = (b, txt) => { b.classList.add('cst-on'); const old = b.textContent; b.textContent = txt; return () => { b.classList.remove('cst-on'); b.textContent = old; }; };
+  const fadeG = group('Fade',
+    B('⏬ Fade out + pause', 'Gets quiet in 6 s, then pauses', async (e) => {
+      if (!isPlayingNow()) return toast('Nothing is playing');
+      const done = fadeBusy(e.currentTarget, '⏬ Fading… 6 s');
+      if ((await studioFade(0, 6)) <= 0) { done(); return toast('🔌 Press ⏸ and ▶ once, then try again'); }
+      await sleep(6100);
+      if (isPlayingNow()) { const b = playBtn(); if (b) b.click(); }
+      await sleep(250);
+      await studioFade(1, 0.05);
+      done();
+    }),
+    B('⏫ Fade in', 'Starts quiet and gets loud in 5 s', async (e) => {
+      const done = fadeBusy(e.currentTarget, '⏫ Fading in… 5 s');
+      await studioFade(0, 0.03);
+      if (!isPlayingNow()) { const b = playBtn(); if (b) b.click(); }
+      await sleep(150);
+      if ((await studioFade(1, 5)) <= 0) toast('🔌 Press ⏸ and ▶ once, then try again');
+      await sleep(5000);
+      done();
+    }),
+    B('↘ Fade to next', 'Fades out in 4 s, plays the next song and fades it in', async (e) => {
+      const done = fadeBusy(e.currentTarget, '↘ Next in 4 s…');
+      if ((await studioFade(0, 4)) <= 0) { done(); return toast('🔌 Press ⏸ and ▶ once, then try again'); }
+      await sleep(4100);
+      scClick('.playControls__next, .skipControl__next');
+      await sleep(700);
+      await studioFade(1, 3);
+      done();
+    }));
+  // tempo + intro
+  ST.bpm = el('b', 'cst-bpm', '— BPM');
+  const taps = [];
+  ST.btns.tap = B('👆 Tap', 'Tap to the beat 4+ times', () => {
+    const now = performance.now();
+    if (taps.length && now - taps[taps.length - 1] > 2000) taps.length = 0;
+    taps.push(now);
+    if (taps.length > 8) taps.shift();
+    if (taps.length >= 4) { const iv = (taps[taps.length - 1] - taps[0]) / (taps.length - 1); ST.tapBpm = Math.round(60000 / iv); }
+    ST.bpm.textContent = ST.tapBpm ? ST.tapBpm + ' BPM (tap)' : 'tap ' + taps.length + ' / 4…';
+    ST.btns.tap.classList.add('cst-on');
+    clearTimeout(ST.tapT);
+    ST.tapT = setTimeout(() => ST.btns.tap.classList.remove('cst-on'), 150);
+  });
+  ST.btns.intro = [0, 10, 20, 30].map((sec) => B(sec ? 'Skip ' + sec + ' s' : 'No skip', sec ? 'Every new song starts at ' + sec + ' s' : 'Songs start from the beginning', () => {
+    ST.intro = sec; try { localStorage.setItem('ccx_intro', String(sec)); } catch {}
+    ST.btns.intro.forEach((b, i) => b.classList.toggle('cst-on', [0, 10, 20, 30][i] === sec));
+    toast(sec ? '⏭ Every new song starts at ' + sec + ' s' : 'Songs start from the beginning');
+  }));
+  const tempoG = group('Tempo  ·  Intro', ST.bpm, ST.btns.tap, el('i', 'cst-sep'), ...ST.btns.intro);
+
+  const grid = el('div', 'cst-grid');
+  grid.append(transport, song, speed, loop, sound, fxG, fadeG, tempoG, sleepG);
+  // timeline with loop + cues
+  ST.tl = el('div', 'cst-tl');
+  ST.tlFill = el('i', 'cst-tlfill');
+  ST.tlLoop = el('i', 'cst-tlloop');
+  ST.tlMarks = el('div', 'cst-tlmarks');
+  ST.tl.append(ST.tlLoop, ST.tlFill, ST.tlMarks);
+  ST.tl.addEventListener('mousedown', (e) => { const r = ST.tl.getBoundingClientRect(); const d = songDur(); if (d) seekToTime(((e.clientX - r.left) / r.width) * d); });
+  const x = el('button', 'cm-x', '✕');
+  x.title = 'Leave studio mode (Esc)';
+  x.addEventListener('click', () => toggleStudio(false));
+  root.append(top, ST.tl, grid, x);
+  document.documentElement.append(root);
+  ST.el = root;
+  setInterval(() => { if (studioOn) paintStudio(); }, 250);
+  setInterval(() => { if (studioOn) studioAudioCheck(); }, 1500);
+  // A–B loop + sleep "end of song"
+  setInterval(() => {
+    if (ST.b != null && ST.a != null && songNow() >= ST.b) seekToTime(ST.a);
+  }, 60);
+}
+async function studioFx(o) {
+  let n = -1;
+  try { n = await webFrame.executeJavaScript(`window.__ccx ? window.__ccx.fx(${JSON.stringify(o)}) : -1`, true); } catch {}
+  if (n === 0) toast('🔌 Press ⏸ and ▶ once — then the effect reaches the sound');
+  else if (n === -1) toast('🔌 The sound engine of SCX is not ready — press ⟳ (restart SCX)');
+  setTimeout(studioAudioCheck, 400);
+}
+async function studioFade(to, sec) {
+  try { return await webFrame.executeJavaScript(`window.__ccx ? window.__ccx.fade(${Number(to)}, ${Number(sec)}) : -1`, true); } catch { return -1; }
+}
+async function studioAudioCheck() {
+  if (!ST.audioInfo) return;
+  let st = null;
+  try { st = await webFrame.executeJavaScript('window.__ccx ? window.__ccx.status() : null', true); } catch {}
+  if (!st) ST.audioInfo.textContent = '🔌 Sound engine: not ready (press ⟳)';
+  else if (!st.nodes) ST.audioInfo.textContent = st.els ? '🔌 Effects: off — pick an effect (if nothing changes, press ⏸ ▶ once)' : '🔌 Effects: play a song first';
+  else ST.audioInfo.textContent = '🔌 Effects connected ✓' + (st.ctx === 'running' ? '' : ' (' + st.ctx + ')');
+  ST.audioInfo.dataset.ok = st && st.nodes ? '1' : '';
+}
+try { ST.intro = Number(localStorage.getItem('ccx_intro')) || 0; } catch {}
+// skip intro: a new song starts at N seconds
+let introUrl = '';
+setInterval(() => {
+  const tr = lastTrackInfo || {};
+  if (!ST.intro || !tr.url || !tr.playing || tr.url === introUrl) return;
+  introUrl = tr.url;
+  if (songNow() < ST.intro - 1 && songDur() > ST.intro + 20) seekToTime(ST.intro);
+}, 700);
+function saveCues() {
+  const keys = Object.keys(ST.cues);
+  if (keys.length > 200) keys.slice(0, keys.length - 200).forEach((k) => delete ST.cues[k]);
+  try { localStorage.setItem('ccx_cues', JSON.stringify(ST.cues)); } catch {}
+}
+function setSleep(m) {
+  clearTimeout(ST.sleepT);
+  ST.sleepAt = 0; ST.sleepEnd = false;
+  if (m > 0) {
+    ST.sleepAt = Date.now() + m * 60000;
+    ST.sleepT = setTimeout(() => { if (isPlayingNow()) { const b = playBtn(); if (b) b.click(); } ST.sleepAt = 0; toast('😴 Sleep timer: music paused'); }, m * 60000);
+    toast('😴 Music pauses in ' + m + ' min');
+  } else if (m < 0) { ST.sleepEnd = true; ST.sleepUrl = (lastTrackInfo || {}).url; toast('😴 Music pauses when this song ends'); }
+  paintStudio();
+}
+// "end of song": pause as soon as the next song starts
+setInterval(() => {
+  if (!ST.sleepEnd) return;
+  const u = (lastTrackInfo || {}).url;
+  if (u && ST.sleepUrl && u !== ST.sleepUrl) { if (isPlayingNow()) { const b = playBtn(); if (b) b.click(); } ST.sleepEnd = false; toast('😴 Sleep timer: music paused'); }
+}, 500);
+let studioErrShown = false;
+function paintStudio() {
+  try { paintStudioInner(); } catch (e) {
+    if (!studioErrShown) { studioErrShown = true; toast('Studio error: ' + (e && e.message) + ' — please send this to W1CKIX'); }
+    console.error('[SCX studio]', e);
+  }
+}
+function paintStudioInner() {
+  if (!ST.el) return;
+  const tr = lastTrackInfo || {};
+  if (tr.url !== ST.url) {
+    ST.url = tr.url || '';
+    ST.a = ST.b = null;
+    ST.tapBpm = null;
+    const big = bigArt(tr.art);
+    ST.cover.style.backgroundImage = big && safeImg(big) ? cssUrl(big) : '';
+    ST.title.textContent = tr.title || 'Nothing playing';
+    ST.artist.textContent = tr.artist || '';
+  }
+  const t = songNow(), d = songDur();
+  ST.time.textContent = fmtTime(t) + ' / ' + fmtTime(d) + (ST.rate !== 1 ? '  ·  ' + ST.rate + '×' : '');
+  ST.btns.play.textContent = isPlayingNow() ? '⏸' : '▶';
+  const lb = document.querySelector('.playbackSoundBadge__like');
+  const liked = !!(lb && lb.classList.contains('sc-button-selected'));
+  ST.btns.like.textContent = liked ? '♥ Liked' : '♡ Like';
+  ST.btns.like.classList.toggle('cst-on', liked);
+  const sh = document.querySelector('.shuffleControl');
+  ST.btns.shuffle.classList.toggle('cst-on', !!(sh && sh.classList.contains('m-shuffling')));
+  const rp = document.querySelector('.repeatControl');
+  const rm = rp ? (rp.classList.contains('m-one') ? 'one' : rp.classList.contains('m-all') ? 'all' : 'off') : 'off';
+  ST.btns.repeat.textContent = rm === 'one' ? '🔂 Repeat one' : rm === 'all' ? '🔁 Repeat all' : '🔁 Repeat';
+  ST.btns.repeat.classList.toggle('cst-on', rm !== 'off');
+  ST.btns.rates.forEach((b) => b.classList.toggle('cst-on', b.textContent === ST.rate + '×'));
+  ST.btns.A.classList.toggle('cst-on', ST.a != null);
+  ST.btns.B.classList.toggle('cst-on', ST.b != null);
+  ST.btns.A.textContent = ST.a != null ? 'A ' + fmtTime(ST.a) : 'A';
+  ST.btns.B.textContent = ST.b != null ? 'B ' + fmtTime(ST.b) : 'B';
+  const cues = (tr.url && ST.cues[tr.url]) || [];
+  ST.btns.cues.forEach((b, i) => { b.classList.toggle('cst-on', cues[i] != null); b.textContent = cues[i] != null ? (i + 1) + ' · ' + fmtTime(cues[i]) : String(i + 1); });
+  ST.btns.boost.classList.toggle('cst-on', !!S.boost.on);
+  if (ST.btns.pre) {
+    ST.btns.pre.forEach((b) => b.classList.toggle('cst-on', b.dataset.k === ST.fx.preset));
+    ST.btns.d8.classList.toggle('cst-on', !!ST.fx.d8);
+    ST.btns.intro.forEach((b, i) => b.classList.toggle('cst-on', [0, 10, 20, 30][i] === (ST.intro || 0)));
+    const map = tr.url && MAPS.get(tr.url);
+    ST.bpm.textContent = ST.tapBpm ? ST.tapBpm + ' BPM (tap)' : map && map.bpm ? Math.round(map.bpm) + ' BPM' : '— BPM';
+    ST.bpm.title = map && map.bpm ? 'From the SCX Beat map of this song' : 'Record the song in Game → Record, or tap the beat';
+  }
+  ST.btns.bass.textContent = '💥 Bass+' + (S.boost.on && S.boost.bass ? ' ' + Math.round(S.boost.bass) : '');
+  ST.btns.mute.classList.toggle('cst-on', !!document.querySelector('.volume.muted'));
+  if (Date.now() - (ST.volT || 0) > 1500 && tr.vol != null) ST.vol.value = String(Math.round(tr.vol * 100));
+  const left = ST.sleepAt ? Math.max(0, ST.sleepAt - Date.now()) : 0;
+  ST.sleepInfo.textContent = ST.sleepEnd ? '😴 end of song' : left ? '😴 ' + fmtTime(left / 1000) : '';
+  ST.btns.sleepOff.classList.toggle('cst-on', !left && !ST.sleepEnd);
+  // timeline
+  ST.tlFill.style.width = (d ? Math.min(100, (t / d) * 100) : 0) + '%';
+  if (d && ST.a != null) { ST.tlLoop.style.display = ''; ST.tlLoop.style.left = (ST.a / d) * 100 + '%'; ST.tlLoop.style.width = (((ST.b != null ? ST.b : t) - ST.a) / d) * 100 + '%'; }
+  else ST.tlLoop.style.display = 'none';
+  ST.tlMarks.textContent = '';
+  if (d) cues.forEach((c, i) => { if (c == null) return; const m = el('i', 'cst-mark cst-cue' + i, String(i + 1)); m.style.left = (c / d) * 100 + '%'; ST.tlMarks.append(m); });
+  // next up
+  const next = (tr.next || []).slice(0, 4);
+  const key = next.map((n) => n.title).join('|');
+  if (key !== ST.nextKey) {
+    ST.nextKey = key;
+    ST.next.textContent = '';
+    if (!next.length) ST.next.append(el('div', 'cm-empty', 'Nothing in the queue'));
+    next.forEach((n, i) => {
+      const r = el('button', 'cst-nurow');
+      const a = el('i');
+      if (safeImg(n.art)) a.style.backgroundImage = cssUrl(n.art);
+      const tx = el('div');
+      tx.append(el('b', null, n.title), el('span', null, n.artist || ''));
+      r.append(a, tx);
+      r.addEventListener('click', () => playNextUp(i));
+      ST.next.append(r);
+    });
+  }
+}
+function studioFrame() {
+  if (!studioOn) return;
+  ST.raf = requestAnimationFrame(studioFrame);
+  const cv = ST.cv, r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  const W = Math.max(1, Math.round(r.width * dpr)), H = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const c = cv.getContext('2d');
+  c.clearRect(0, 0, W, H);
+  const f = analyser && freq ? (analyser.getByteFrequencyData(freq), freq) : null;
+  const N = 48, gap = 3 * dpr, bw = (W - gap * (N - 1)) / N;
+  const acc = accentColor();
+  const g = c.createLinearGradient(0, H, 0, 0);
+  g.addColorStop(0, acc); g.addColorStop(1, lighten(acc, 0.55));
+  c.fillStyle = g;
+  ST.bars = ST.bars || new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    let v = 0;
+    if (f) { const a = Math.floor(Math.pow(i / N, 1.7) * 300) + 1, b2 = Math.floor(Math.pow((i + 1) / N, 1.7) * 300) + 2; let sum = 0; for (let k = a; k < b2; k++) sum += f[k]; v = sum / (b2 - a) / 255; }
+    else if (isPlayingNow()) v = 0.15 + 0.1 * Math.sin(performance.now() / 300 + i / 3);
+    ST.bars[i] = Math.max(v, ST.bars[i] * 0.88);
+    const h = Math.max(2 * dpr, ST.bars[i] * H * 0.95);
+    const x = i * (bw + gap);
+    c.beginPath();
+    if (c.roundRect) c.roundRect(x, H - h, bw, h, Math.min(bw / 2, 4 * dpr)); else c.rect(x, H - h, bw, h);
+    c.fill();
+  }
+}
+addEventListener('keydown', (e) => {
+  if (!studioOn || STORE.open || (panel && panel.classList.contains('cc-open')) || typing(e)) return;
+  if (e.key === 'Escape') { e.stopImmediatePropagation(); toggleStudio(false); }
+  else if (e.code === 'Space' && !G.on && !ED.on) { e.preventDefault(); e.stopImmediatePropagation(); const b = playBtn(); if (b) b.click(); }
+}, true);
+
+// ---- small player (Shop window bottom, Minimal mode)
+function playerBar(cls) {
+  const w = el('div', 'cc-pbar ' + (cls || ''));
+  const art = el('i', 'cc-pb-art');
+  const tx = el('div', 'cc-pb-tx');
+  const ti = el('b');
+  const ar = el('span');
+  tx.append(ti, ar);
+  const btn = (label, title, fn, c) => { const b = el('button', 'cc-pb-btn' + (c ? ' ' + c : ''), label); b.title = title; b.addEventListener('click', fn); return b; };
+  const play = btn('▶', 'Play / pause', () => { const b = playBtn(); if (b) b.click(); setTimeout(upd, 120); }, 'cc-pb-play');
+  const ctr = el('div', 'cc-pb-ctr');
+  ctr.append(
+    btn('⏮', 'Previous', () => { const b = document.querySelector('.playControls__prev, .skipControl__previous'); if (b) b.click(); }),
+    btn('−5', 'Back 5 s', () => seekBy(-5)),
+    play,
+    btn('+5', 'Forward 5 s', () => seekBy(5)),
+    btn('⏭', 'Next', () => { const b = document.querySelector('.playControls__next, .skipControl__next'); if (b) b.click(); })
+  );
+  const tl = el('div', 'cc-pb-tl');
+  const t1 = el('small'), t2 = el('small');
+  const bar = el('div', 'cc-pb-bar');
+  const fill = el('i');
+  bar.append(fill);
+  bar.addEventListener('mousedown', (e) => { const r = bar.getBoundingClientRect(); const d = songDur(); if (d) seekToTime(((e.clientX - r.left) / r.width) * d); });
+  tl.append(t1, bar, t2);
+  const vol = el('input', 'cc-pb-vol');
+  vol.type = 'range'; vol.min = '0'; vol.max = '100';
+  let volT = 0;
+  vol.addEventListener('input', () => { volT = Date.now(); setVolume(Number(vol.value) / 100); });
+  const mid = el('div', 'cc-pb-mid');
+  mid.append(ctr, tl);
+  const left = el('div', 'cc-pb-left');
+  left.append(art, tx);
+  w.append(left, mid, vol);
+  let lastArt = '';
+  function upd() {
+    const tr = lastTrackInfo || {};
+    ti.textContent = tr.title || 'Nothing playing';
+    ar.textContent = tr.artist || '';
+    const a = safeImg(tr.art) ? tr.art : '';
+    if (a !== lastArt) { lastArt = a; art.style.backgroundImage = a ? cssUrl(a) : ''; }
+    play.textContent = isPlayingNow() ? '⏸' : '▶';
+    const d = songDur(), t = songNow();
+    fill.style.width = (d ? Math.min(100, (t / d) * 100) : 0) + '%';
+    t1.textContent = fmtTime(t);
+    t2.textContent = fmtTime(d);
+    if (Date.now() - volT > 1500 && tr.vol != null && isFinite(tr.vol)) vol.value = String(Math.round(tr.vol * 100));
+  }
+  upd();
+  return { el: w, update: upd };
 }
 
 function buildShopTab() {
@@ -5055,6 +6874,10 @@ function buildShopTab() {
 const ADM = { items: [], kind: 'tag', root: null, msg: '' };
 const isAdmin = () => !!(ON.me && ON.me.is_admin);
 
+async function loadPromos() {
+  try { const r = await onlineCall('adminPromos'); ADM.promos = Array.isArray(r) ? r : []; } catch (e) { ADM.promos = []; }
+  if (ADM.paintPromos) ADM.paintPromos();
+}
 async function loadAdminItems() {
   try { const r = await onlineCall('adminItems'); ADM.items = Array.isArray(r) ? r : []; } catch (e) { ADM.msg = e.message; }
   renderAdmin();
@@ -5092,11 +6915,12 @@ function renderAdmin() {
 
   // ---- add to shop
   box.append(sectionTitle('🛒 Add to the shop'));
-  box.append(segmented([['pack', 'Pack'], ['gift', 'Gift'], ['tag', 'Tag'], ['frame', 'Frame'], ['image', 'Picture'], ['gif', 'GIF'], ['theme', 'Theme']], () => ADM.kind, (v) => { ADM.kind = v; renderAdmin(); }));
+  box.append(segmented([['pack', 'Pack'], ['gift', 'Gift'], ['variant', 'Variant'], ['ticket', 'Ticket'], ['tag', 'Tag'], ['frame', 'Frame'], ['image', 'Picture'], ['gif', 'GIF'], ['theme', 'Theme']], () => ADM.kind, (v) => { ADM.kind = v; renderAdmin(); }));
   const name = textInput('Name in the shop');
   const price = textInput('Price in coins');
   price.inputMode = 'numeric';
-  box.append(field('Name', name), field('Price 🪙', price));
+  box.append(field('Name', name));
+  if (ADM.kind !== 'variant' && ADM.kind !== 'ticket') box.append(field('Price 🪙', price)); // variants + tickets are not sold in the Shop
   let getData = () => ({});
   let supplyIn = null;
   // upload helper (picture / GIF → Supabase storage)
@@ -5124,7 +6948,81 @@ function renderAdmin() {
     });
     return file;
   };
-  if (ADM.kind === 'pack') {
+  if (ADM.kind === 'variant') {
+    price.value = '0';
+    const st = { style: 'custom', colors: ['#ff2a6d', '#7a04eb'], color: true, fx: ['shine'] };
+    const style = el('select', 'cc-text');
+    [['gold', 'Gold'], ['silver', 'Silver'], ['toxic', 'Toxic'], ['custom', 'My colors']].forEach(([v, l]) => { const o = el('option', null, l); o.value = v; style.append(o); });
+    style.value = 'custom';
+    const chance = textInput('e.g. 5');
+    chance.inputMode = 'decimal';
+    chance.value = '5';
+    const prev = el('div', 'cc-shoppic cc-admprev cc-admprev-big');
+    const colBox = el('div');
+    const fxBox = el('div', 'cc-fxchips');
+    const paint = () => {
+      // colors: up to 4, or none
+      colBox.textContent = '';
+      const nc = el('button', 'cc-chk' + (st.color ? '' : ' cc-on'));
+      nc.append(el('i'), el('span', null, 'No color (only effects)'));
+      nc.addEventListener('click', () => { st.color = !st.color; paint(); });
+      colBox.append(nc);
+      if (st.color && st.style === 'custom') {
+        const row = el('div', 'cc-colrow');
+        st.colors.forEach((c, i) => {
+          const w = el('span', 'cc-colpick');
+          const inp = colorInput(c);
+          inp.addEventListener('input', () => { st.colors[i] = inp.value; drawPrev(); });
+          w.append(inp);
+          if (st.colors.length > 1) { const x = el('button', 'cc-colx', '✕'); x.title = 'Remove color'; x.addEventListener('click', () => { st.colors.splice(i, 1); paint(); }); w.append(x); }
+          row.append(w);
+        });
+        if (st.colors.length < 4) { const plus = el('button', 'cc-sbtn cc-ghostbtn', '+ color'); plus.addEventListener('click', () => { st.colors.push('#ffffff'); paint(); }); row.append(plus); }
+        colBox.append(row);
+      }
+      // effects: any mix
+      fxBox.textContent = '';
+      Object.entries(VFX).forEach(([k, l]) => {
+        const b = el('button', 'cc-fxchip' + (st.fx.includes(k) ? ' cc-on' : ''), l);
+        b.addEventListener('click', () => { st.fx = st.fx.includes(k) ? st.fx.filter((x) => x !== k) : st.fx.concat(k); paint(); });
+        fxBox.append(b);
+      });
+      drawPrev();
+    };
+    const drawPrev = () => {
+      prev.textContent = '';
+      const d = getData();
+      [['🐉', 'mythic'], ['🌹', 'common']].forEach(([e, r]) => prev.append(giftEl({ emoji: e, rarity: r }, 64, { vdef: Object.assign({ name: name.value || 'Variant' }, d) })));
+    };
+    style.addEventListener('change', () => { st.style = style.value; if (style.value === 'toxic' && st.fx.length === 1 && st.fx[0] === 'shine') st.fx = ['steam', 'drip']; paint(); });
+    name.addEventListener('input', drawPrev);
+    box.append(field('Look', style), field('Colors', colBox), field('Effects (pick any)', fxBox), field('Chance on every craft / pack (%)', chance), prev,
+      note('The server keeps only these settings — SCX draws it. Tickets can raise the chance (Ticket tab).'));
+    getData = () => {
+      const d = { style: st.style, chance: Math.max(0, Math.min(100, Number(String(chance.value).replace(',', '.')) || 0)), effects: st.fx.slice() };
+      if (!st.color) d.color = false;
+      if (st.style === 'custom' && st.color) d.colors = st.colors.slice();
+      return d;
+    };
+    setTimeout(paint);
+  } else if (ADM.kind === 'ticket') {
+    price.value = '0';
+    const emo = textInput('Emoji, e.g. 🎫');
+    emo.maxLength = 8;
+    emo.value = '🎫';
+    const vsel = el('select', 'cc-text');
+    ADM.items.filter((x) => x.kind === 'variant').forEach((v) => { const o = el('option', null, v.name); o.value = v.id; vsel.append(o); });
+    const bonus = textInput('e.g. 20');
+    bonus.inputMode = 'decimal';
+    bonus.value = '20';
+    const chance = textInput('e.g. 2');
+    chance.inputMode = 'decimal';
+    chance.value = '2';
+    box.append(field('Emoji', emo), field('For which variant', vsel), field('+ chance for that variant when used (%)', bonus),
+      field('How many songs hide it (% of all songs, every day new ones)', chance),
+      note(vsel.options.length ? 'People find tickets while listening (max 3 a day). They can use, give or sell them.' : 'Make a variant first (Variant tab).'));
+    getData = () => ({ emoji: emo.value.trim() || '🎫', variant: Number(vsel.value) || null, bonus: Math.max(0, Math.min(100, Number(String(bonus.value).replace(',', '.')) || 0)), chance: Math.max(0, Math.min(100, Number(String(chance.value).replace(',', '.')) || 0)) });
+  } else if (ADM.kind === 'pack') {
     const emo = textInput('Emoji (default 🎁)');
     emo.maxLength = 8;
     const url = textInput('or a picture: https://… (or upload)');
@@ -5269,6 +7167,7 @@ function renderAdmin() {
   box.append(wideBtn('Add to shop', async () => {
     const data = getData();
     if (ADM.kind === 'pack' && !(data.pool && data.pool.length)) return done('Tick at least one gift for the pack');
+    if (ADM.kind === 'ticket' && !data.variant) return done('Make a variant first');
     if ((ADM.kind === 'image' || ADM.kind === 'gif' || data.style === 'image' || (ADM.kind === 'gift' && !data.emoji) || (ADM.kind === 'pack' && !data.emoji)) && !/^https:\/\//.test(data.url || '')) return done('Upload a file or paste an https:// link');
     try {
       await onlineCall('adminAdd', { kind: ADM.kind, name: name.value, price: price.value, data, supply: supplyIn ? supplyIn.value : null });
@@ -5312,6 +7211,86 @@ function renderAdmin() {
   box.append(pw, el('div', 'cc-gap'), pm, wideBtn('Send', async () => {
     try { await onlineCall('adminMessage', { who: pw.value, text: pm.value }); pm.value = ''; done('Sent ✓', true); } catch (e) { done(e.message); }
   }));
+
+  // ---- settings everybody gets
+  box.append(sectionTitle('💬 Discord server'));
+  const dl = textInput('https://discord.gg/…', CFG.discord || '');
+  box.append(dl, wideBtn('Save Discord link', async () => {
+    try { await onlineCall('adminConfig', { key: 'discord', value: dl.value }); CFG.discord = dl.value.trim() || null; done(dl.value.trim() ? '✓ Everybody now sees "Join our Discord server" in the Discord tab' : '✓ Discord link removed', true); }
+    catch (e) { done(e.message); }
+  }), note('Shown in the Discord tab of everybody: "Join our Discord server for gifts and free Premium". Empty = hidden.'));
+
+  // ---- promo codes
+  box.append(sectionTitle('🎟️ Promo codes'));
+  const pcode = textInput('Code, e.g. SCX2026');
+  pcode.maxLength = 32;
+  const rnd = el('button', 'cc-sbtn cc-ghostbtn', '🎲');
+  rnd.title = 'Random code';
+  rnd.addEventListener('click', () => { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; pcode.value = 'SCX-' + Array.from({ length: 6 }, () => a[Math.floor(Math.random() * a.length)]).join(''); });
+  const crow = el('div', 'cc-promo');
+  crow.append(pcode, rnd);
+  ADM.pkind = ADM.pkind || 'coins';
+  const pbox = el('div');
+  let pAmount = null, pItem = null;
+  const paintPrize = () => {
+    pbox.textContent = '';
+    if (ADM.pkind === 'coins') { pAmount = textInput('How many coins'); pAmount.inputMode = 'numeric'; pbox.append(field('Coins', pAmount)); }
+    else if (ADM.pkind === 'item') {
+      pItem = el('select', 'cc-text');
+      ADM.items.filter((x) => x.active !== false).forEach((it) => { const o = el('option', null, it.kind + ' · ' + it.name); o.value = it.id; pItem.append(o); });
+      pbox.append(field('Item', pItem));
+    } else pbox.append(note('★ The code gives SCX Premium.'));
+  };
+  const pseg = el('div', 'cc-gtabs');
+  const paintSeg = () => {
+    pseg.textContent = '';
+    [['coins', '🪙 Coins'], ['premium', '★ Premium'], ['item', '🎁 Item']].forEach(([k, l]) => {
+      const b = el('button', ADM.pkind === k ? 'cc-on' : '', l);
+      b.addEventListener('click', () => { ADM.pkind = k; paintSeg(); paintPrize(); });
+      pseg.append(b);
+    });
+  };
+  paintSeg(); paintPrize();
+  const uses = textInput('1');
+  uses.inputMode = 'numeric';
+  uses.value = '1';
+  const days = textInput('Empty = forever');
+  days.inputMode = 'numeric';
+  box.append(field('Code', crow), field('Prize', pseg), pbox, field('How many people can use it', uses), field('Valid for (days)', days),
+    wideBtn('Create promo code', async () => {
+      try {
+        await onlineCall('adminPromoAdd', { code: pcode.value, kind: ADM.pkind, amount: pAmount && pAmount.value, item: pItem && pItem.value, max_uses: uses.value, days: days.value });
+        done('🎟️ ' + pcode.value + ' created ✓', true);
+        pcode.value = '';
+        loadPromos();
+      } catch (e) { done(e.message); }
+    }));
+  const plist = el('div', 'cc-promolist');
+  box.append(plist);
+  const paintPromos = () => {
+    plist.textContent = '';
+    if (!ADM.promos) { plist.append(note('Loading…')); return; }
+    if (!ADM.promos.length) plist.append(note('No promo codes yet.'));
+    ADM.promos.forEach((pc) => {
+      const r = el('div', 'cc-admitem' + (pc.active ? '' : ' cc-off'));
+      const prize = pc.kind === 'coins' ? '🪙 ' + Number(pc.amount).toLocaleString('en-US') : pc.kind === 'premium' ? '★ Premium' : '🎁 ' + ((pc.shop_items && pc.shop_items.name) || 'deleted item');
+      const exp = pc.expires_at ? (new Date(pc.expires_at) < new Date() ? ' · expired' : ' · until ' + new Date(pc.expires_at).toLocaleDateString()) : '';
+      r.append(el('span', null, pc.code + ' → ' + prize), el('small', null, pc.uses + ' / ' + pc.max_uses + ' used' + exp));
+      const t = el('button', 'cc-sbtn cc-ghostbtn', pc.active ? 'Stop' : 'Start');
+      t.addEventListener('click', async () => { try { await onlineCall('adminPromoToggle', { promo: pc.id, active: !pc.active }); loadPromos(); } catch (e) { done(e.message); } });
+      const xb = el('button', 'cc-sbtn cc-redbtn', '🗑');
+      let arm = 0;
+      xb.addEventListener('click', async () => {
+        if (Date.now() - arm > 3000) { arm = Date.now(); xb.textContent = 'Sure?'; return; }
+        try { await onlineCall('adminPromoDelete', { promo: pc.id }); loadPromos(); } catch (e) { done(e.message); }
+      });
+      r.append(t, xb);
+      plist.append(r);
+    });
+  };
+  ADM.paintPromos = paintPromos;
+  paintPromos();
+  if (!ADM.promos) loadPromos();
 
   box.append(sectionTitle('🪙 Give coins'));
   const gw = textInput('SCX nick or SoundCloud link');
@@ -5409,6 +7388,39 @@ const RESERVED = new Set(['discover', 'you', 'stream', 'search', 'upload', 'sett
   'notifications', 'feed', 'people', 'stations', 'tags', 'popular', 'pro', 'jobs', 'imprint', 'mobile', 'go', 'next', 'artists', 'signin', 'logout', 'home']);
 const badgeCache = new Map();
 let badgeFor = '';
+// put the frame exactly around the round picture (the box around it can be wider → it was an oval / huge)
+function placeAvatarDecor() {
+  const host = document.querySelector('.profileHeaderInfo__avatar.ccx-avhost');
+  if (!host) return;
+  const decor = host.querySelector('.ccx-avring, .ccx-avdeco');
+  if (!decor) return;
+  let pic = null, area = 0;
+  host.querySelectorAll('span[style*="background-image"], img, .sc-artwork').forEach((x) => {
+    if (x.classList.contains('ccx-scx')) return;
+    const r = x.getBoundingClientRect();
+    if (r.width * r.height > area) { area = r.width * r.height; pic = x; }
+  });
+  if (!pic) pic = [...host.children].find((x) => !x.classList.contains('ccx-scx')) || null;
+  const hr = host.getBoundingClientRect();
+  const pr = pic ? pic.getBoundingClientRect() : hr;
+  const d = Math.min(pr.width, pr.height);
+  if (!d) return;
+  let size = decor.classList.contains('ccx-avdeco') ? d * (Number(decor.dataset.scale) || 1.3) : d + (Number(decor.dataset.pad) || 14);
+  const cx = pr.left - hr.left + pr.width / 2, cy = pr.top - hr.top + pr.height / 2;
+  // full size again; instead, the boxes around the picture must not cut it
+  let a = host, n = 0;
+  while (a && a !== document.body && n++ < 8) {
+    const cs = getComputedStyle(a);
+    if (cs.overflow !== 'visible' || cs.overflowX !== 'visible' || cs.overflowY !== 'visible') a.classList.add('ccx-ovf');
+    if (a.matches('.profileHeader, .l-profile-header, .l-user-hero')) break;
+    a = a.parentElement;
+  }
+  decor.style.width = decor.style.height = size + 'px';
+  decor.style.left = cx - size / 2 + 'px';
+  decor.style.top = cy - size / 2 + 'px';
+}
+addEventListener('resize', placeAvatarDecor);
+
 async function scxBadges() {
   const parts = location.pathname.split('/').filter(Boolean);
   const nameEl = document.querySelector('.profileHeaderInfo__userName');
@@ -5426,6 +7438,7 @@ async function scxBadges() {
     badgeFor = '';
   }
   paintBadges(info.p, url);
+  placeAvatarDecor();
 }
 
 function paintBadges(p, url) {
@@ -5443,6 +7456,7 @@ function paintBadges(p, url) {
   scx.title = 'Open SCX profile';
   scx.addEventListener('click', () => { togglePanel(true); activeTab = 'Online'; refreshPanel(); openProfile(p.id); });
   row.append(scx);
+  if (p.premium) row.append(el('span', 'ccx-scxprem', '★ Premium'));
   if (p.tag_text) row.append(tagEl(p));
   row.append(el('span', 'ccx-scxcoins', '🪙 ' + bal(p).toLocaleString('en-US')));
   if (p.presence) row.append(el('span', 'ccx-scxon', '● Online in SCX'));
@@ -5455,19 +7469,21 @@ function paintBadges(p, url) {
   if (fc && av && fc.style === 'image') {
     const img = el('img', 'ccx-scx ccx-avdeco ccf-' + fc.layer);
     img.dataset.key = key;
+    img.dataset.scale = String(fc.scale);
     img.src = fc.url;
     img.alt = '';
-    img.style.setProperty('--fs', String(fc.scale));
     av.classList.add('ccx-avhost');
     av.append(img);
   } else if (fc && av) {
     const ring = el('i', 'ccx-scx ccx-avring ccf-' + fc.style);
     ring.dataset.key = key;
+    ring.dataset.pad = '14';
     ring.style.setProperty('--fb', fc.bg);
     ring.style.setProperty('--fc', fc.c1);
     av.classList.add('ccx-avhost');
     av.append(ring);
   }
+  placeAvatarDecor();
   const hero = document.querySelector('.profileHeaderBackground');
   if (p.profile_bg && safeImg(p.profile_bg) && hero) {
     const bgl = el('div', 'ccx-scx ccx-herobg');
@@ -5546,6 +7562,18 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     e.stopImmediatePropagation();
     ipcRenderer.send('hotkey', k === 'p' ? 'mini' : 'main');
+  } else if (k === 'm') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    toggleMinimal();
+  } else if (k === 'v') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    toggleVinyl();
+  } else if (k === 's') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    toggleStudio();
   }
 }, true);
 document.addEventListener('keyup', (e) => { if ((e.key || '').toLowerCase() === 'x') xDown = false; }, true);
