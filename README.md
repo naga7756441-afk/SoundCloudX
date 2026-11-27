@@ -23,6 +23,10 @@ You log in once. Everything you like, follow and listen to stays the same. SCX j
 
 <br>
 
+<img src="assets/real-hero.jpg" alt="SoundCloudX with the menu open" width="100%">
+
+<br>
+
 <img src="assets/themes.png" alt="Themes" width="100%">
 
 ### Make it look like *your* SoundCloud
@@ -33,9 +37,11 @@ Happy with it? Save it as a `.scxtheme` file and send it to a friend.
 
 Even the loading screen and SoundCloud's waveform follow your color. With Premium, the theme can **flow between several colors** — on its own, or to the beat.
 
+<img src="assets/real-themes.jpg" alt="A dark picture theme and the orange Audio Visualizer theme" width="100%">
+
 <br>
 
-<img src="assets/modes.png" alt="Modes" width="100%">
+<img src="assets/real-modes.jpg" alt="Vinyl, Minimal and Studio modes" width="100%">
 
 ### Four ways to listen
 
@@ -66,6 +72,8 @@ Join **SCX Online** and you get a profile — nick, frame, profile background, t
 
 You earn **coins** just by using SCX: listening, likes, reposts, comments and time in the app.
 
+<img src="assets/real-online.jpg" alt="SCX profile on SoundCloud, stats and leaderboard" width="100%">
+
 <br>
 
 <img src="assets/beat.png" alt="SCX Beat" width="100%">
@@ -80,20 +88,6 @@ A rhythm game built right into the player.
 
 Aim with the mouse, hit with `A` `S` `D` `W` `E` `Q` or `M1` / `M2`, hold `Space` for HOLD circles. Ranks from SS to D, and your score turns into coins.
 
-<!--
-  ADD YOUR OWN SCREENSHOTS HERE:
-  1. put the pictures into the "assets" folder (screenshot-1.png, screenshot-2.png, …)
-  2. remove this line and the two lines with the arrows around this block
-
-<br>
-
-### Screenshots
-
-<p align="center">
-  <img src="assets/screenshot-1.png" width="49%">
-  <img src="assets/screenshot-2.png" width="49%">
-</p>
--->
 
 <br>
 
