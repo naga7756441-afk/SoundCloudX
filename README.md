@@ -1,241 +1,199 @@
 <p align="center">
-  <img src="icon-512.png" width="128" alt="SoundCloudX">
-</p>
-
-<h1 align="center">SoundCloudX</h1>
-
-<p align="center">
-  <b>SoundCloud as a real Windows app — themes, visualizers, a mini player, a rhythm game, gifts and Discord status.</b><br>
-  <sub>SCX By W1CKIX · v2.8.1</sub>
+  <img src="assets/banner.png" alt="SoundCloudX — SoundCloud as a real desktop app" width="100%">
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/badge/⬇%20Download-latest%20version-ff5500?style=for-the-badge" alt="Download"></a>
-  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4?style=for-the-badge&logo=windows" alt="Windows">
-  <img src="https://img.shields.io/badge/version-2.8.1-222?style=for-the-badge" alt="v2.8.1">
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/Download_for_Windows-ff5500?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
+  &nbsp;
+  <img src="https://img.shields.io/badge/version-2.8.1-1a1a1f?style=for-the-badge" alt="v2.8.1">
+  <img src="https://img.shields.io/badge/price-free-1a1a1f?style=for-the-badge" alt="free">
+</p>
+
+<p align="center">
+  <b>SoundCloud, but it finally feels like an app.</b><br>
+  <sub>Themes · Vinyl & Studio modes · Collectible gifts · A rhythm game · Discord status</sub>
 </p>
 
 ---
 
-## 🆕 What's new in v2.8.1
+I love SoundCloud. I didn't love listening to it in a browser tab, between forty other tabs.
+So I built **SoundCloudX** — your normal SoundCloud account, in its own window, with all the things I always wanted it to have.
 
-- 🛠 **Studio fixes** — buttons light up right away when pressed, fades work by the volume (always), tap tempo shows the count, Effects show if they reach the sound (🔌 line)
+You log in once. Everything you like, follow and listen to stays the same. SCX just makes it look and feel better — and adds a little world around it.
 
-## v2.8
+<br>
 
-- ★ **Multi-color themes (Premium)** — several colors at once: Flow, Jump, Plasma — by itself or to the music
-- 🎛️ **Studio** — Underwater / Radio / Lo-fi / Bass only / No bass, 8D audio, balance, fades, tap tempo, skip intro
-- 🎫 Show tickets on songs or not, ticket animations on / off
-- 🎁 Packs give a variant only with a ticket (chance × 3), craft never gives limited gifts
-- 💬 "Join our Discord server" in the Discord tab (link set by SCX ADMIN), Advanced Discord settings are Premium
+<img src="assets/themes.png" alt="Themes" width="100%">
 
-<details>
-<summary><b>v2.7</b></summary>
+### Make it look like *your* SoundCloud
 
-- ⬇ **Auto-update** — SCX downloads new versions from GitHub by itself and asks to restart
-- ✨ **Variants** — up to 4 colors (or none) and any mix of 10 effects: shine, drip, steam, sparkles, fire, snow, glitch, rainbow, orbit, pulse
-- 🛒 **Shop sorting & filters** — cheapest / most expensive / rarest / newest, limited only, hide sold out, max price
-- 🏪 Market shows the **Original price** (even for sold-out limited gifts)
-- 🎨 The loading screen uses your theme color
-</details>
+Pick one of **8 animated themes** — Dark Wave, Cyberpunk City, Y2K, Liquid Chrome, Space, Audio Visualizer, Rainy Window or Underground.
+Or make your own: drop in any picture or GIF, blur it, darken it, put glass panels on top and choose every color yourself.
+Happy with it? Save it as a `.scxtheme` file and send it to a friend.
 
-<details>
-<summary><b>v2.6</b></summary>
+Even the loading screen and SoundCloud's waveform follow your color. With Premium, the theme can **flow between several colors** — on its own, or to the beat.
 
-- 🛠 **Fix:** SCX did not start in v2.5 (only the loading screen) — fixed
-- 🕵️ Send gifts and coins **anonymously** or with your name
-- ✉️ Not anonymous → SCX opens a **SoundCloud message** with a gift code (you press Send); with SCX the code turns into a gift card
-</details>
+<br>
 
-<details>
-<summary><b>v2.5</b></summary>
+<img src="assets/modes.png" alt="Modes" width="100%">
 
-- ✨ **Gift variants** — ✨ Gold, 🥈 Silver, ☢️ Toxic (steam + slime) and the admin's own ones
-- ⚒️ **Craft** — 3 gifts of one rarity → 1 random gift of the next rarity, maybe as a variant
-- 🎫 **Tickets hidden in songs** — a 🎫 shows next to the song; listen 20 s to take it, use it for more variant chance, give or sell it
-- 🎨 Moving backgrounds and SoundCloud's waveform in your theme color
-- 🏪 Market shows the Shop price, reposts on song pages count, My gifts can be folded
-</details>
+### Four ways to listen
 
-<details>
-<summary><b>v2.4</b></summary>
-
-- 🎛️ **Studio mode** (`X` + `S`) — all the buttons: speed 0.5×–2× (with or without pitch), A–B loop, 4 hot cues, sleep timer, SoundBoost / bass, shuffle / repeat, like, spectrum, Next up
-- ⭕ Picture frames on SoundCloud profiles are full size again and not cut
-</details>
-
-<details>
-<summary><b>v2.3</b></summary>
-
-- 💿 **Vinyl mode** (`X` + `V`) — the song spins on a record, the needle drops when it plays, the room pulses with the bass
-- ✨ **My style** — wear any tag, frame or profile background you own, even when it is gone from the Shop
-- ★ **Premium CSS** — write your own CSS theme (saved only on your PC)
-- 🔢 Limited gifts show their number on hover (`#42 / 500`)
-- ⟳ Restart button, better Next up, picture frames fixed
-</details>
-
-<details>
-<summary><b>v2.2</b></summary>
-
-- 🛒 **New Shop** — categories in the menu, the catalog opens in the middle of the screen, with a player at the bottom
-- 🏪 **Market** — sell your gifts and packs to other people (10 at once)
-- ★ **Premium** — 100 gift places, −10% in the Shop and a star next to your nick
-- 🎟️ **Promo codes** — coins, Premium or any item
-- 🎧 **Minimal mode** (`X` + `M`) — a big player, Next up and songs like this one
-- Max 50 gifts (Premium 100), one pack every 10 seconds, frames on SoundCloud profiles fixed
-</details>
-
-<details>
-<summary><b>v2.1</b></summary>
-
-- 📦 **Gift packs** — open a 🎁 and get one of the gifts shown on it, with the chance of each in %
-- 🔁 **Pass gifts and packs** you have to someone else (a gift keeps its number)
-- 🔑 **Recovery code** — get your profile back on a new PC (coins, gifts, followers)
-- 🔤 Nicks don't care about upper / lower case anymore (`W1CKIX` = `w1ckix`)
-</details>
-
-<details>
-<summary><b>v2.0</b></summary>
-
-- 🎁 **Gifts like in Telegram** — emoji or picture gifts with 7 rarities, limited editions with numbers (#12)
-- 🪙 **Send coins, gifts, tags and frames** to other SCX users, with a message
-- 📌 **Pin up to 3 gifts** on your profile — visible in SCX and on your SoundCloud page
-- 🌸 **Picture frames** — a picture / GIF behind or over your profile picture, like Discord avatar decorations
-</details>
-
-<details>
-<summary><b>v1.9</b></summary>
-
-- ⭕ Frames around your profile picture and 🖼️ profile backgrounds (pictures / GIFs from the Shop)
-- 🎮 SCX Beat: 3 modes — **Record**, **Real time**, **Make own** (map editor)
-- HOLD circles on `Space`, game coins = score ÷ 10
-- Menu sections on the left
-</details>
-
----
-
-## ✨ Features
-
-### 🖥️ App
-- Opens soundcloud.com as its own app, full screen like F11
-- Own top bar (hover the top edge): **SoundCloudX menu**, minimize, small window, close
-- Loading screen, smooth minimize / restore animations
-- Your SoundCloud login is remembered
-
-### 🎨 Themes
-- 8 animated themes: 🌌 Dark Wave · 🌃 Cyberpunk City · 🖤 Y2K · 🌊 Liquid Chrome · 🌠 Space / Saturn · 🎵 Audio Visualizer · 🌧️ Rainy Window · 🕸️ Underground
-- Background: song cover, your own picture / **GIF** or a theme — blur, darkness, glass panels
-- Your own colors for text, accents, sliders and the menu
-- **Save my theme / Load theme** — share `.scxtheme` files
-
-### 🔊 Visual & Sound
-- Visualizers: **Wave** and **Ball**, any color
-- **Bass glow** — the screen edges light up on every bass hit
-- **SoundBoost** — up to 300% volume and bass boost (with a limiter)
-- Repost / like animations, **Next up** card
-
-### 🎧 Mini player
-- Classic · Ball · Wave · Ultra mini
-- Sound background that pulses to the music
-- Next up, −5s / +5s, volume
-
-### 🎮 SCX Beat — rhythm game
-| Mode | How it works |
+| | |
 |---|---|
-| ● **Record** | Listen to a song once → SCX writes down every beat → play an exact map |
-| ⚡ **Real time** | Play any song right now, circles follow the beat live |
-| ✏️ **Make own** | Map editor: rewind the song, tap points, hold `Space` for HOLD circles, snap to beat, undo, test play |
+| 🎧 **Mini player** `X` `P` | A small player on top of everything else. Ball, Wave or Ultra mini. |
+| 💿 **Vinyl** `X` `V` | The song spins on a record, the needle drops when it plays, the room pulses with the bass. |
+| 🎛️ **Studio** `X` `S` | Every button: speed 0.5×–2×, A–B loop, hot cues, 8D audio, Lo-fi / Radio / Underwater, fades, tap tempo, skip intro, sleep timer. |
+| ✨ **Minimal** `X` `M` | Just the cover, the song and what's next. Nothing else. |
 
-- Tap circles: aim with the mouse + `A` `S` `D` `W` `E` `Q` or `M1` / `M2` · HOLD circles: `Space`
-- Easy / Normal / Hard, combo, accuracy, ranks SS–D, best scores
-- Share maps as `.scxmap` files
+On top of that: **SoundBoost** up to 300 % with a bass boost and a limiter, a **bass glow** around the screen, and **Wave / Ball** visualizers in any color.
 
-### 🌐 SCX Online
-- Profile: nick, SoundCloud picture and 🔗 link, coins, stats, frame, background, pinned gifts
-- Who is in SCX right now and what they play — **Listen too** in one click
-- Follow people, leaderboards (coins and SCX Beat), search
-- 🔑 **Recovery code** to move your profile to another PC
-- **SCX badge on SoundCloud profiles** of SCX users (seen by everyone using SCX)
+<br>
 
-### 🎁 Gifts
-| Rarity | Color |
-|---|---|
-| Common | ⚪ white |
-| Uncommon | 🟢 green |
-| Rare | 🔵 blue |
-| Epic | 🟣 purple |
-| Legendary | 🟠 gold |
-| Mythic | 🔴 red / pink |
-| Divine | 🩵 sky blue, shimmering |
+<img src="assets/gifts.png" alt="Gifts" width="100%">
 
-- Buy a gift for a friend or for yourself, add a message
-- Limited gifts run out (`459 / 500 left`) and every copy has its number
-- Pin up to **3** on your profile
-- **Gift packs**: open one → one of the gifts shown on the pack drops (chances are shown in %), packs can be gifted too
-- Pass a gift or a pack you have to a friend
+### Gifts, like in Telegram
 
-### 🛒 Shop
-- **Gifts**, **tags**, **frames** (rings or pictures / GIFs like Discord), **themes**, **pictures** and **GIFs**
-- Pictures / GIFs as screen, menu or **profile background**
+Join **SCX Online** and you get a profile — nick, frame, profile background, tags and up to 3 pinned gifts. People with SCX see it right on your SoundCloud page.
 
-### 🪙 Coins
-- Song +50 · Like +50 · Repost +100 · Comment +250 · Follow +500 · SCX Beat score ÷ 10
-- Time in SCX: 1h +500 · 2h +1500 · 3h +2500 · 4h +3500 · 5h +5000 · then 5000 + hours × 200
+- **7 rarities** — from Common to Divine
+- **Limited editions** with a number on every copy (`#12 / 500`)
+- **Variants** — ✦ Gold, Silver, ☢ Toxic and more, with their own effects
+- **Gift packs** you open for a surprise, **craft** 3 gifts into a better one
+- **🎫 Tickets** hidden in songs — find one while listening
+- **Market** — sell gifts to other people
+- **★ Premium** — 100 gift places, −10 % in the Shop and a star next to your nick
 
-### 📊 Stats
-- Today: songs, time in SCX, listening time, likes, reposts, top artists
-- Last 7 days and all time
+You earn **coins** just by using SCX: listening, likes, reposts, comments and time in the app.
 
-### 💬 Discord
-- Rich Presence: *Listening to SoundCloudX*, song, cover, time — just switch it on
+<br>
 
----
+<img src="assets/beat.png" alt="SCX Beat" width="100%">
+
+### SCX Beat — any song is a level
+
+A rhythm game built right into the player.
+
+- ● **Record** — listen once, SCX writes down every beat and gives you an exact map
+- ⚡ **Real time** — play any song right now, the circles follow the beat live
+- ✏️ **Make own** — a full map editor with snap to beat, HOLD notes and test play
+
+Aim with the mouse, hit with `A` `S` `D` `W` `E` `Q` or `M1` / `M2`, hold `Space` for HOLD circles. Ranks from SS to D, and your score turns into coins.
+
+<!--
+  ADD YOUR OWN SCREENSHOTS HERE:
+  1. put the pictures into the "assets" folder (screenshot-1.png, screenshot-2.png, …)
+  2. remove this line and the two lines with the arrows around this block
+
+<br>
+
+### Screenshots
+
+<p align="center">
+  <img src="assets/screenshot-1.png" width="49%">
+  <img src="assets/screenshot-2.png" width="49%">
+</p>
+-->
+
+<br>
+
+## And the small things
+
+- 💬 **Discord status** — *Listening to SoundCloudX*, with the song, cover and time
+- 📊 **Stats** — today, the last 7 days and all time: songs, hours, top artists
+- 👥 See who's in SCX right now and what they play — **Listen too** in one click
+- 🔑 **Recovery code** — move your profile, coins and gifts to a new PC
+- ⬇️ **Auto-update** — new versions install themselves
+- 🖥️ Full screen like F11, its own top bar, smooth minimize and restore
+
+<br>
 
 ## ⌨️ Hotkeys
 
-| Keys | Action |
+| Keys | |
 |---|---|
 | `X` + `P` | Mini player |
-| `X` + `O` | Show / hide SoundCloudX |
-| `X` + `M` | Minimal mode |
-| `X` + `V` | Vinyl mode |
-| `X` + `S` | Studio mode |
-| `Ctrl` + `Alt` + `P` / `O` | Same, anywhere in Windows |
+| `X` + `O` | Show / hide the SCX menu |
+| `X` + `M` · `V` · `S` | Minimal · Vinyl · Studio |
+| `Ctrl` + `Alt` + `P` / `O` | Same, from anywhere in Windows |
 | `F11` | Full screen |
 | `Esc` | Close the menu / stop the game |
 
----
+<br>
 
 ## 📥 Install
 
-1. Open **[Releases](../../releases/latest)**
-2. Download **SoundCloudX-portable.exe** (no install) or **SoundCloudX Setup.exe** (installer)
-3. If Windows says *"Windows protected your PC"* → **More info → Run anyway** (the app is not code-signed)
+1. Go to **[Releases](../../releases/latest)**
+2. Download **`SoundCloudX Setup.exe`** (installs + updates itself) or **`SoundCloudX-portable.exe`** (no install)
+3. Windows says *"Windows protected your PC"*? → **More info → Run anyway**.
+   That only means the app isn't code-signed — signing costs a few hundred euros a year.
 
-## 🛠 Build it yourself
+<details>
+<summary><b>Build it yourself</b></summary>
 
-Needs [Node.js](https://nodejs.org) (LTS).
+<br>
+
+You need [Node.js](https://nodejs.org) (LTS).
 
 ```
 npm install
 npm run build
 ```
 
-or double-click **build.bat**. The `.exe` files appear in `dist/`.
+Or just double-click **build.bat**. The `.exe` files appear in `dist/`.
 
-## 🗄️ Own server (optional)
+**Own server (optional).** SCX Online runs on [Supabase](https://supabase.com) — the free plan is enough.
+Run these once in *Supabase → SQL Editor*, in this order:
 
-SCX Online runs on [Supabase](https://supabase.com) (free plan is enough).
-Run these once in **Supabase → SQL Editor**, in this order:
+`supabase-v1.7.sql` → `v1.8` → `v1.9` → `v2.0` → `v2.1` → `v2.2` → `v2.3` → `v2.6` → `v2.7` → `v2.8` → `v2.9`
 
-`supabase-v1.7.sql` → `supabase-v1.8.sql` → `supabase-v1.9.sql` → `supabase-v2.0.sql` → `supabase-v2.1.sql` → `supabase-v2.2.sql` → `supabase-v2.3.sql` → `supabase-v2.6.sql` → `supabase-v2.7.sql` → `supabase-v2.8.sql` → `supabase-v2.9.sql`
+</details>
+
+<br>
+
+## 🆕 What's new
+
+**v2.8.1** — Studio fixes: buttons light up right away, fades always work, tap tempo shows the count, and Effects tell you if they reach the sound.
+
+**v2.8** — ★ Multi-color themes (Flow, Jump, Plasma — on their own or to the music) · more Studio: Underwater / Radio / Lo-fi, 8D, balance, fades, tap tempo, skip intro · ticket show / animation switches · packs give variants only with a ticket · craft never gives limited gifts · Discord server banner, Advanced Discord settings for Premium
+
+<details>
+<summary><b>Older versions</b></summary>
+
+<br>
+
+**v2.7** — Auto-update from GitHub · variants with up to 4 colors and 10 effects · Shop sorting & filters · Original price on the Market · loading screen in your theme color
+
+**v2.6** — Fixed: v2.5 stuck on the loading screen · send gifts and coins anonymously · gift codes in SoundCloud messages turn into gift cards
+
+**v2.5** — Gift variants (Gold, Silver, Toxic) · craft · tickets hidden in songs · moving backgrounds and waveform in your color · fold My gifts
+
+**v2.4** — Studio mode · picture frames on SoundCloud profiles full size again
+
+**v2.3** — Vinyl mode · My style · Premium CSS · gift numbers on hover · restart button
+
+**v2.2** — New Shop · Market · Premium · promo codes · Minimal mode
+
+**v2.1** — Gift packs · pass gifts on · recovery code · nicks without upper / lower case
+
+**v2.0** — Gifts with 7 rarities · send coins, gifts, tags and frames · pin 3 gifts · picture frames
+
+**v1.9** — Frames and profile backgrounds · SCX Beat: Record, Real time, Make own · menu on the left
+
+</details>
+
+<br>
+
+## 🔒 Privacy
+
+SCX Online only shares your nick, profile picture, what you're playing, your coins and stats. No e-mail, no password — your SoundCloud login never leaves your PC.
+
+<br>
 
 ---
 
-## ℹ️ Notes
-
-- Download only works for tracks where the artist allowed downloads (SoundCloud's own *Download file*).
-- Only your nick, picture, what you play, coins and stats are shared in SCX Online — no e-mail, no password.
-- Not affiliated with SoundCloud. SoundCloud is a trademark of SoundCloud Global Limited.
-
-<p align="center"><sub>Made with 🧡 by W1CKIX</sub></p>
+<p align="center">
+  <sub>Made with 🧡 by <b>W1CKIX</b><br>
+  Not affiliated with SoundCloud. SoundCloud is a trademark of SoundCloud Global Limited.<br>
+  Downloads only work for tracks where the artist allowed it.</sub>
+</p>
